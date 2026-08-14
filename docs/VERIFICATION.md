@@ -2,9 +2,10 @@
 
 What CI cannot tell us. Everything here needs a device or emulator (API 26+).
 
-Nothing in this document has been run yet. The extraction was verified only to the extent that it
-compiles, lints, and packages. Treat every box below as genuinely unknown, and record what you find
-— a failure here is expected and useful, not a surprise.
+Nothing in this document has been run yet, apart from the one box in section I that is marked done
+— it needs no device. The extraction was verified only to the extent that it compiles, lints, and
+packages. Treat every other box below as genuinely unknown, and record what you find — a failure
+here is expected and useful, not a surprise.
 
 Suggested order: **A first** (it guards real data), then **B** (it is where the new code is), then
 the rest.
@@ -168,32 +169,36 @@ back for that to work. Neither half has run.
 
 - [ ] `./gradlew assembleRelease` succeeds. It is minified with `isShrinkResources = true` and
       currently **unsigned** — signing arrives in Phase 10.
-- [ ] **No device needed for this one.** Check that R8 left the persisted enum names alone:
+- [x] **No device needed for this one.** Check that R8 left the persisted enum names alone — every
+      one of these should print `ok`:
 
       ```bash
-      grep -E "NoteType|ChecklistIconStyle|ThemeMode" app/build/outputs/mapping/release/mapping.txt
+      for s in TEXT CHECKLIST CHECKBOX CIRCLE STAR HEART SQUARE SYSTEM LIGHT DARK; do printf "%-10s %s\n" "$s" "$(unzip -p app/build/outputs/apk/release/app-release-unsigned.apk classes.dex | strings -a | grep -qF "$s" && echo ok || echo MISSING)"; done
       ```
 
-      The constants should map to themselves. `CHECKLIST -> a` is the failure.
+      **Do not use `mapping.txt` for this.** It will show `NoteType -> g4.e`, which looks like a
+      failure and is not — R8 renames the *class* while leaving the constant name strings alone,
+      and the strings are the only part that matters.
 
-      `NoteType` and `ChecklistIconStyle` are written to SQLite as `enum.name`, to the backup JSON
-      by `buildExportJson`, and `ThemeMode` to DataStore — and every read is a tolerant
-      `fromName(…) ?: TEXT`. So a rename does not crash: imports from Smart Toolkit arrive as empty
-      text notes, exports stop being readable by Smart Toolkit, and a mapping that shifts between
-      two releases resets an existing library on upgrade. All of it silent, none of it visible in
-      debug. `proguard-android-optimize.txt` keeps `values()` and `valueOf()` but **not** the
-      constants themselves.
+      Why it matters: `NoteType` and `ChecklistIconStyle` are written to SQLite as `enum.name`, to
+      the backup JSON by `buildExportJson`, and `ThemeMode` to DataStore — and every read is a
+      tolerant `fromName(…) ?: TEXT`. A rename would not crash. Imports from Smart Toolkit would
+      arrive as empty text notes, exports would stop being readable by Smart Toolkit, and a mapping
+      that shifted between two releases would reset an existing library on upgrade. All silent, and
+      none of it visible in a debug build. `proguard-android-optimize.txt` keeps `values()` and
+      `valueOf()` but **not** the constants themselves, so nothing in the config guarantees this.
 
-      If it fails, the fix is in `proguard-rules.pro`:
+      **Ran 2026-08-14 against AGP 8.13.2 / Kotlin 2.1.0 / R8: all ten present, passes.** Recheck
+      after any AGP or R8 bump, since nothing pins the behaviour. If it ever fails, the fix is
+      `proguard-rules.pro`:
 
       ```
       -keepclassmembers enum com.theamericanmaker.tickbox.data.model.** { *; }
       -keepclassmembers enum com.theamericanmaker.tickbox.data.UserPreferencesRepository$ThemeMode { *; }
       ```
 
-      Likely to pass: Smart Toolkit ships minified with the same defaults and the same missing
-      rules, and its checklists survive updates — which is decent evidence R8 preserves these
-      today. That also makes it **inherited** rather than a port defect if it does fail.
+      A failure here would be **inherited**, not a port defect: Smart Toolkit ships minified with
+      the same defaults and the same missing rules.
 - [ ] Install that APK and repeat at least sections A and B. **R8 has never been exercised against
       this code**, and Room plus reflection is exactly where shrinking tends to break. If something
       works in debug and not in release, suspect `proguard-rules.pro`.
