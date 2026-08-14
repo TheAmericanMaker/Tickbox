@@ -7,32 +7,33 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import com.theamericanmaker.tickbox.data.ThemeMode
+import com.theamericanmaker.tickbox.ui.TickboxNavHost
+import com.theamericanmaker.tickbox.ui.theme.TickboxTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        val preferences = (application as TickboxApp).container.preferences
+
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Placeholder()
-                }
+            val themeMode by preferences.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+            val dynamicColor by preferences.dynamicColor.collectAsState(initial = true)
+
+            val darkTheme = when (themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+
+            TickboxTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
+                TickboxNavHost()
             }
         }
-    }
-}
-
-@Composable
-private fun Placeholder() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text = "Tickbox", style = MaterialTheme.typography.headlineMedium)
     }
 }
