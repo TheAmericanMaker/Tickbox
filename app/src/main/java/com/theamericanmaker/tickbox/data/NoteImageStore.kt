@@ -21,10 +21,12 @@ import java.util.UUID
  */
 class NoteImageStore(private val context: Context) {
 
-    private val directory: File
+    val directory: File
         get() = File(context.filesDir, DIRECTORY_NAME)
 
     fun fileFor(fileName: String): File = File(directory, fileName)
+
+    fun ensureDirectory(): File = directory.also { it.mkdirs() }
 
     /**
      * Copies [uri] into internal storage, downscaled and re-encoded.

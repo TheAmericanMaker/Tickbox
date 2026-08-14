@@ -13,6 +13,7 @@ import com.theamericanmaker.tickbox.data.NoteDatabase
 import com.theamericanmaker.tickbox.data.NoteImageStore
 import com.theamericanmaker.tickbox.data.NoteRepository
 import com.theamericanmaker.tickbox.data.UserPreferencesRepository
+import com.theamericanmaker.tickbox.data.backup.NoteBackupManager
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -28,6 +29,7 @@ interface AppContainer {
     val noteRepository: NoteRepository
     val preferences: UserPreferencesRepository
     val imageStore: NoteImageStore
+    val backupManager: NoteBackupManager
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -48,6 +50,15 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val imageStore: NoteImageStore by lazy { NoteImageStore(context) }
+
+    override val backupManager: NoteBackupManager by lazy {
+        NoteBackupManager(
+            context = context,
+            repository = noteRepository,
+            database = database,
+            imageStore = imageStore,
+        )
+    }
 }
 
 /**
