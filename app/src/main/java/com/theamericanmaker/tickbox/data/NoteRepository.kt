@@ -133,6 +133,16 @@ class NoteRepository(
         return noteId
     }
 
+    /**
+     * Checklist item ids in display order.
+     *
+     * The editor reads these back after a save so newly created items pick up their
+     * real ids; without that every later save would look like a fresh insert and the
+     * reconciliation in [saveNote] would churn the table exactly as before.
+     */
+    suspend fun getChecklistItemIdsInOrder(noteId: Long): List<Long> =
+        checklistItemDao.getItemsForNoteOnce(noteId).map { it.id }
+
     suspend fun addImage(noteId: Long, filePath: String, position: Int): Long =
         noteImageDao.insert(NoteImageEntity(noteId = noteId, filePath = filePath, position = position))
 
