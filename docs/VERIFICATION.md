@@ -65,9 +65,14 @@ back for that to work. Neither half has run.
 - [ ] Check an item; it moves into the "N checked items" section. Reopen — still checked, still
       there.
 - [ ] Uncheck it; it returns to the main list.
-- [ ] Type continuously for ~30 seconds in one item. Autosave fires repeatedly during this; when
-      you reopen, the text should be complete and the list unchanged. **If item identity is
-      breaking, this is where it shows.**
+- [ ] Type in **bursts** in one item — a few words, pause ~3 seconds, repeat 10–15 times. When you
+      reopen, the text should be complete and the list unchanged. **If item identity is breaking,
+      this is where it shows.**
+
+      The pauses are the test. `scheduleAutoSave` debounces rather than throttles — every keystroke
+      cancels the pending job — so typing *continuously* fires autosave once, at the end, and
+      exercises nothing. Each pause past 2s buys one more save. Temporarily dropping
+      `AUTOSAVE_DELAY_MS` to ~200ms in a throwaway build gets the same coverage faster.
 - [ ] Switch a checklist to a text note and back. Item text survives the round trip (checked state
       and indentation are expected to be dropped — that conversion is lossy by design).
 
@@ -78,6 +83,17 @@ back for that to work. Neither half has run.
 - [ ] Type a title only, press back, reopen the list — the note is saved.
 - [ ] Open a **new** note, type nothing, press back — no empty note is created.
 - [ ] Type, then press back **before** 2 seconds elapse — the note still saves (back forces a save).
+- [ ] Repeat that on a **new** note ten times in a row, as fast as you can. Exactly one note should
+      appear per attempt. Two is the failure.
+
+      `savedNoteId` is only assigned after the insert returns, `save()` does not cancel the pending
+      `autoSaveJob`, and nothing serialises the two paths — so a back-press save that overlaps the
+      timer's save can have both read `savedNoteId` as 0 and insert separately. The window is
+      narrow, which is why this needs repeating rather than one careful attempt.
+
+      **Inherited, not a port defect.** Smart Toolkit's `NotepadViewModel` has the same shape
+      (plain `savedNoteId`, cancel-and-restart `autoSaveJob`, assignment after the insert), so it
+      is reachable there too and does not on its own block 1.0.
 - [ ] Predictive back / gesture back behaves the same as the top-bar arrow.
 
 ---
@@ -152,6 +168,32 @@ back for that to work. Neither half has run.
 
 - [ ] `./gradlew assembleRelease` succeeds. It is minified with `isShrinkResources = true` and
       currently **unsigned** — signing arrives in Phase 10.
+- [ ] **No device needed for this one.** Check that R8 left the persisted enum names alone:
+
+      ```bash
+      grep -E "NoteType|ChecklistIconStyle|ThemeMode" app/build/outputs/mapping/release/mapping.txt
+      ```
+
+      The constants should map to themselves. `CHECKLIST -> a` is the failure.
+
+      `NoteType` and `ChecklistIconStyle` are written to SQLite as `enum.name`, to the backup JSON
+      by `buildExportJson`, and `ThemeMode` to DataStore — and every read is a tolerant
+      `fromName(…) ?: TEXT`. So a rename does not crash: imports from Smart Toolkit arrive as empty
+      text notes, exports stop being readable by Smart Toolkit, and a mapping that shifts between
+      two releases resets an existing library on upgrade. All of it silent, none of it visible in
+      debug. `proguard-android-optimize.txt` keeps `values()` and `valueOf()` but **not** the
+      constants themselves.
+
+      If it fails, the fix is in `proguard-rules.pro`:
+
+      ```
+      -keepclassmembers enum com.theamericanmaker.tickbox.data.model.** { *; }
+      -keepclassmembers enum com.theamericanmaker.tickbox.data.UserPreferencesRepository$ThemeMode { *; }
+      ```
+
+      Likely to pass: Smart Toolkit ships minified with the same defaults and the same missing
+      rules, and its checklists survive updates — which is decent evidence R8 preserves these
+      today. That also makes it **inherited** rather than a port defect if it does fail.
 - [ ] Install that APK and repeat at least sections A and B. **R8 has never been exercised against
       this code**, and Room plus reflection is exactly where shrinking tends to break. If something
       works in debug and not in release, suspect `proguard-rules.pro`.
