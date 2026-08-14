@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Dark counterpart of values/themes.xml. Without this the window background is
+      painted light before Compose draws, which shows as a white flash on cold launch
+      in dark mode.
+    -->
+    <style name="Theme.Tickbox" parent="android:Theme.Material.NoActionBar" />
+</resources>

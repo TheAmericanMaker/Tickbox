@@ -1,0 +1,24 @@
+*.iml
+.gradle
+.gradle-user-home/
+/local.properties
+/.idea
+.DS_Store
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.log
+*.logcat
+
+# Signing keys — never commit
+*.keystore
+*.jks
+keystore.properties
