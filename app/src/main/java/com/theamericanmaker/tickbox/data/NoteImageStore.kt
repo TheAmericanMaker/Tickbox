@@ -81,12 +81,24 @@ class NoteImageStore(private val context: Context) {
      * Deleting a note cascades away its `note_images` rows but has never removed the
      * files, so installs that have been in use for a while can be carrying a lot of
      * dead JPEGs. Run this once at startup, off the main thread.
+     *
+     * Files newer than [minAgeMillis] are left alone. The database is the authority on
+     * what is referenced, but a file can legitimately exist slightly before its row
+     * does — an import writes images then inserts rows, and an attachment is saved to
+     * disk before the note is saved. Skipping recent files means this can never race
+     * with work that is still in flight, at the cost of deferring a cleanup by a day.
      */
-    suspend fun deleteOrphans(referencedFileNames: Set<String>): Int = withContext(Dispatchers.IO) {
+    suspend fun deleteOrphans(
+        referencedFileNames: Set<String>,
+        minAgeMillis: Long = DEFAULT_ORPHAN_MIN_AGE_MS,
+    ): Int = withContext(Dispatchers.IO) {
         val onDisk = directory.listFiles()?.filter { it.isFile } ?: return@withContext 0
+        val cutoff = System.currentTimeMillis() - minAgeMillis
         var removed = 0
         onDisk.forEach { file ->
-            if (file.name !in referencedFileNames && file.delete()) removed++
+            val isOrphan = file.name !in referencedFileNames
+            val isSettled = file.lastModified() < cutoff
+            if (isOrphan && isSettled && file.delete()) removed++
         }
         removed
     }
@@ -100,5 +112,7 @@ class NoteImageStore(private val context: Context) {
          */
         private const val MAX_DIMENSION = 2560
         private const val JPEG_QUALITY = 85
+
+        private const val DEFAULT_ORPHAN_MIN_AGE_MS = 24L * 60 * 60 * 1000
     }
 }
