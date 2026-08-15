@@ -79,5 +79,17 @@ dependencies {
 
     implementation(libs.coroutines.android)
 
+    // OCR. Apache-2.0 wrapper around Tesseract 5 + Leptonica; ~8 MB of native libs
+    // across the four ABIs, plus the 4 MB English model in assets.
+    implementation(libs.tesseract4android)
+
+    implementation(libs.reorderable)
+
     testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.turbine)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.junit)
+    testImplementation(libs.room.testing)
 }

@@ -14,6 +14,7 @@ import com.theamericanmaker.tickbox.data.NoteImageStore
 import com.theamericanmaker.tickbox.data.NoteRepository
 import com.theamericanmaker.tickbox.data.UserPreferencesRepository
 import com.theamericanmaker.tickbox.data.backup.NoteBackupManager
+import com.theamericanmaker.tickbox.ocr.TesseractTextRecognizer
 import com.theamericanmaker.tickbox.ocr.TextRecognizer
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -64,8 +65,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         )
     }
 
-    // Tesseract lands in its own change; until then the editor hides text extraction.
-    override val textRecognizer: TextRecognizer? = null
+    override val textRecognizer: TextRecognizer? by lazy { TesseractTextRecognizer(context) }
 }
 
 /**
