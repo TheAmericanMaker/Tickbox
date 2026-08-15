@@ -573,7 +573,58 @@ is to *drop OCR from 1.0* if results embarrass the app, and the upgrade path is 
       and never again.
 - [ ] Airplane mode changes nothing — the engine is fully on-device.
 
+### What the second round found (2026-08-15)
+
+Owner testing after the rotation fix, results in two pinned notes:
+
+- **Screenshot of a todo list: excellent.** Full sentences, punctuation, `tok/s`, `GPU/RAM`,
+  `run_bench.sh` — essentially perfect.
+- **Photo of a printed packing slip: fails badly.** `Mid Michigan Mfg LLC / 5298 Drow Rd /
+  Prescott MI 48756` came back as `Mid Michiga`. Eleven characters.
+
+The note recording it is titled "narrow small letters", but the image says otherwise: that address
+block is **large, crisp, high-contrast and upright**. Whatever is failing, it is not text size. What
+differs from the screenshot is the *scene* — busy dark background, shadow gradient, curved paper.
+
+**So the cause was isolated on device**, against the same image, same library, same model, with a
+temporary diagnostic that crossed page-segmentation mode with input preprocessing:
+
+| variant | result |
+| --- | --- |
+| `PSM_AUTO` (current default) | `Mid Michiga` — 11 chars |
+| `PSM_SINGLE_BLOCK` | `Mid Michigan Mf \| 5298 Drow Re \| Prescott \| 4` — 42 chars |
+| `PSM_SPARSE_TEXT` | worse than SINGLE_BLOCK |
+| greyscale | negligible change |
+| greyscale + contrast | `Mid Michigan \| 5298 Drow` — 22 chars |
+| **2× upscale** | **catastrophic** — 384 characters of hallucinated noise |
+
+Read by elimination:
+
+- **Not page segmentation**, though `PSM_SINGLE_BLOCK` is roughly four times better than the current
+  `PSM_AUTO` on this image and is worth revisiting on its own merits — one image is not enough to
+  change the default on.
+- **Not binarization.** Greyscale and contrast moved it barely.
+- **Not resolution.** Upscaling made it dramatically worse, which also rules resolution *out* as the
+  binding constraint: the model is not starved of pixels, it is misreading the ones it has.
+
+That leaves the model. `tessdata_fast` is the speed-optimised integer build, and this is what its
+accuracy costs on a photograph.
+
+**Next step before filling in the verdict: swap in the standard `tessdata` model and re-run this
+exact image.** No rebuild needed to try it — push it straight over the copy the app already
+extracted to its own storage:
+
+```bash
+adb push eng.traineddata /data/local/tmp/ && adb shell "run-as com.theamericanmaker.tickbox.debug cp /data/local/tmp/eng.traineddata files/tessdata/eng.traineddata"
+```
+
+Note in passing, unrelated to the verdict: `saveFromUri` downscales with `inSampleSize`, which only
+halves in powers of two, so a 4000px photo becomes **2000px** rather than the 2560 `MAX_DIMENSION`
+allows. Worth tightening if OCR survives — but the upscale result above says it is not what is
+breaking this.
+
 **Verdict box:** keep `tessdata_fast` / upgrade to standard `tessdata` / drop OCR from 1.0.
+*Still open — do not fill this in until the standard model has been tried.*
 
 ---
 
