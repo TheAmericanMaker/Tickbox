@@ -66,7 +66,7 @@ back for that to work. Neither half has run.
 - [ ] Check an item; it moves into the "N checked items" section. Reopen — still checked, still
       there.
 - [ ] Uncheck it; it returns to the main list.
-- [ ] Type in **bursts** in one item — a few words, pause ~3 seconds, repeat 10–15 times. When you
+- [x] Type in **bursts** in one item — a few words, pause ~3 seconds, repeat 10–15 times. When you
       reopen, the text should be complete and the list unchanged. **If item identity is breaking,
       this is where it shows.**
 
@@ -74,6 +74,21 @@ back for that to work. Neither half has run.
       cancels the pending job — so typing *continuously* fires autosave once, at the end, and
       exercises nothing. Each pause past 2s buys one more save. Temporarily dropping
       `AUTOSAVE_DELAY_MS` to ~200ms in a throwaway build gets the same coverage faster.
+
+      Do not judge this one by eye — read the ids off the device, before and after:
+
+      ```bash
+      adb exec-out run-as com.theamericanmaker.tickbox.debug cat databases/tickbox.db > /tmp/t.db
+      ```
+
+      Pull `tickbox.db-wal` and `-shm` alongside it or you will read a stale 4 KB file: the
+      database runs in WAL mode and the rows live in the WAL. Then
+      `SELECT id,noteId,position,text FROM checklist_items ORDER BY noteId,position`. Same ids
+      before and after means the reconciliation held; ids that have advanced mean it degraded to
+      delete-and-reinsert, which looks identical in the UI.
+
+      **Ran 2026-08-15 on a moto g stylus (2025), Android 16:** ids unchanged across ~15 autosaves,
+      neighbouring items untouched, positions stable, text complete, nothing in logcat.
 - [ ] Switch a checklist to a text note and back. Item text survives the round trip (checked state
       and indentation are expected to be dropped — that conversion is lossy by design).
 
