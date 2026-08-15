@@ -77,6 +77,45 @@ back for that to work. Neither half has run.
 
       **Ran 2026-08-15 on a moto g stylus (2025), Android 16:** ids unchanged across ~15 autosaves,
       neighbouring items untouched, positions stable, text complete, nothing in logcat.
+- [x] Type **continuously** for 30 seconds in one item, then stop. Nothing is lost, and ids hold.
+
+      **Ran 2026-08-15 on a Galaxy Z Fold 5:** 399 characters typed over 30 s. All 405 characters
+      persisted once typing stopped, and ids were unchanged (`9, 10, 11`) — the reconciliation holds
+      under sustained editing.
+
+      Worth knowing rather than fixing: **nothing at all reaches the database during those 30
+      seconds.** `AUTOSAVE_DELAY_MS` is 2 s and `scheduleAutoSave` cancels the pending job on every
+      keystroke, so a fast typist never reaches the delay and the unsaved window is unbounded — 30 s
+      of typing was 30 s of data one process death away from gone. A throttle (save at least every
+      N seconds regardless) is the standard remedy. **Inherited** — Smart Toolkit's
+      `NotepadViewModel` cancels and relaunches the same way.
+- [x] Add items by pressing **Enter** repeatedly until the list is longer than the visible area.
+      Each new row should take the caret.
+
+      **Found 2026-08-15 — it does not.** Enter creates the row correctly (the database showed 7
+      rows while the screen showed 3), but if the new row is below the fold it is never composed,
+      `requestFocus()` fails, and `NoteEditScreen`'s collector swallows it:
+
+      ```kotlin
+      // The row has to exist and be composed before it can take focus.
+      delay(100)
+      if (index in focusRequesters.indices) {
+          runCatching { focusRequesters[index].requestFocus() }
+      }
+      ```
+
+      The comment names the precondition; `delay(100)` cannot satisfy it, because nothing scrolls
+      the new row into view. The caret silently stays put and every further keystroke appends to the
+      **previous** item — `Charlie` became `CharlieDeltaEcho`. Confirmed both ways: adding a row at
+      the top of the list, where it is on screen, focuses correctly.
+
+      It bit at item 4 on a Fold 5 cover display; on a normal phone expect roughly item 7. That is
+      well inside the length of an ordinary shopping list, which is what the app is for.
+
+      **Inherited** — Smart Toolkit's `NoteEditScreen.kt:167` is the same code, and its only
+      `animateScrollToItem` is the scroll-to-top affordance. The fix is to scroll the target into
+      view before requesting focus, which needs the checklist-index → lazy-index mapping that the
+      two-section layout makes non-obvious. Not a one-liner.
 - [x] Switch a checklist to a text note and back. Item text survives the round trip (checked state
       and indentation are expected to be dropped — that conversion is lossy by design).
 
@@ -219,6 +258,25 @@ All of section F was verified 2026-08-15 over adb — `input swipe` / `input tap
   activity name. Confirm with `mInputShown` from `dumpsys input_method`, or just screenshot again.
 - **Deleting a card shifts everything below it.** Swiping the same coordinate twice hits a different
   note the second time, or none. Delete the *lower* card first and the upper one keeps its position.
+- **Drive by accessibility node, not by pixel.** `adb shell uiautomator dump` gives exact bounds for
+  every control, and Compose populates it well — the drag handle appears as `Reorder`, rows as
+  `EditText`, the trash icons as `Delete item`. Coordinates read off a screenshot go stale the
+  instant the keyboard opens or a row is added; a tap computed before the IME appeared landed in the
+  title field and quietly concatenated five words into it. Re-dump before every gesture.
+- **`uiautomator` only reports what is on screen.** With the keyboard up, a checklist showed three
+  rows while the database held seven. Do not conclude "the row was not created" from the dump —
+  check the database.
+- **One BACK too many leaves the app entirely.** From the list screen, BACK pops Tickbox off its
+  task and reveals whatever task was behind it, which after enabling USB debugging is Settings. If
+  gestures suddenly appear to do nothing, check the foreground package before assuming a bug.
+
+On a **foldable**, two more:
+
+- `screencap` warns `Multiple displays were found` and picks one arbitrarily, so it may capture the
+  screen you are not using — and the warning text prefixes the PNG bytes, corrupting a naive
+  redirect. Pass `-d`, and get the ids from `dumpsys SurfaceFlinger --display-id`.
+- The *logical* display id is what `input` needs, and it is not the same number. `dumpsys display`
+  maps them: while folded, the cover screen is logical display 0, so `input` needs no `--display`.
 
 For the empty states, swapping the database is far safer than deleting notes through the UI:
 force-stop, `cat` a prepared database over `databases/tickbox.db`, delete the `-wal` and `-shm`, and
@@ -254,6 +312,22 @@ older than the 24h guard is swept on that launch.
 
       The **tint** half of this box is still unverified: no note in the test library has a colour
       label set.
+
+**Polish pass 1 (`6a8f6c6`), verified 2026-08-15 on a Galaxy Z Fold 5:**
+
+- [x] The **+ button opens a menu** ("New checklist" / "New note") instead of creating whichever
+      type matched the active filter chip. *Passed — both entries present and each creates the
+      type it names.*
+- [x] Checklist cards show **progress**, not the word "Checklist". *Passed — a list of 5 with one
+      item checked read "1 of 5 done" with a progress bar. This is backed by a grouped count query
+      combined with the notes flow, so it exercises two live sources rather than one.*
+- [x] Recent notes show **"Today" / "Yesterday"** rather than a calendar date. *Passed — the card
+      read "Today". Note `formatNoteDate` uses `java.time`, which is fine at `minSdk 26` without
+      desugaring.*
+- [ ] "All N done" appears when a checklist is fully checked. *Not yet exercised — the test list
+      always had unchecked items.*
+- [ ] List rows animate placement on pin, delete and undo (`Modifier.animateItem`). *Not
+      verifiable over adb; needs eyes.*
 
 ---
 
@@ -295,8 +369,34 @@ older than the 24h guard is swept on that launch.
 
 ## I. Release build
 
-- [ ] `./gradlew assembleRelease` succeeds. It is minified with `isShrinkResources = true` and
-      currently **unsigned** — signing arrives in Phase 10.
+- [x] `./gradlew assembleRelease` succeeds. It is minified with `isShrinkResources = true`, and
+      signed only when a keystore is configured.
+      *Ran 2026-08-15 locally: succeeds in 47 s. With no `keystore.properties` present it produced
+      `app-release-unsigned.apk` rather than failing, which is the intended F-Droid/contributor
+      fallback. **31 MB** release, **47 MB** debug — Tesseract contributes ~30 MB of native libs
+      across four ABIs plus a 4 MB model, and R8 does not shrink native code. `x86`/`x86_64` are
+      emulator-only for a phone app; an ABI split would roughly halve the download.*
+- [x] **No device needed.** Check that R8 kept the Tesseract JNI surface. Native code looks these
+      classes up by name, so a rename breaks OCR in release only:
+
+      ```bash
+      for c in com/googlecode/tesseract/android/TessBaseAPI com/googlecode/leptonica/android/Pix com/googlecode/leptonica/android/ReadFile; do printf "%-52s %s\n" "$c" "$(unzip -p app/build/outputs/apk/release/app-release-unsigned.apk classes.dex | grep -qa "L$c;" && echo PRESENT || echo MISSING)"; done
+      ```
+
+      *Ran 2026-08-15: all three present — the `-keep` rules in `proguard-rules.pro` hold. This is
+      necessary but not sufficient; only an actual extraction on the minified build proves the JNI
+      wiring, which is the last box in this section.*
+- [x] **No device needed.** Confirm the privacy claim against the built artifact, not the source:
+
+      ```bash
+      aapt2 dump permissions app/build/outputs/apk/release/app-release-unsigned.apk
+      ```
+
+      *Ran 2026-08-15: the merged release manifest declares only `android.permission.CAMERA` (plus
+      the framework's own dynamic-receiver permission). **No `INTERNET`** — Tesseract and its
+      transitive dependencies added none, so `PRIVACY_POLICY.md`'s headline claim survives the
+      dependency. Worth re-running whenever a dependency is added, since a library can introduce a
+      permission through manifest merge without any source change.*
 - [x] **No device needed for this one.** Check that R8 left the persisted enum names alone — every
       one of these should print `ok`:
 
@@ -370,20 +470,41 @@ is to *drop OCR from 1.0* if results embarrass the app, and the upgrade path is 
 
 Implemented 2026-08-15, key-based. The state-machine move is unit-tested; the gesture is not.
 
-- [ ] Long-press the handle and drag an item one position. It lands exactly where dropped, and
+**Verified 2026-08-15 on a Galaxy Z Fold 5 (Android 14, cover display), debug build.** Every box
+below was checked against the database rather than the screen — a correct reorder and a
+delete-and-reinsert look identical in the UI, and only the row ids tell them apart.
+
+- [x] Long-press the handle and drag an item one position. It lands exactly where dropped, and
       **stays** after backing out and reopening (positions are rewritten on save).
-- [ ] Drag the top unchecked item to the bottom of the unchecked section, and bottom to top.
-- [ ] With **checked items present**, drag an unchecked item downward past the "Add item" row —
+      *Passed. `positions` rewritten to match list order, and every row kept its id.*
+- [x] Drag the top unchecked item to the bottom of the unchecked section, and bottom to top.
+      *Passed both directions, ids preserved.*
+- [x] With **checked items present**, drag an unchecked item downward past the "Add item" row —
       it must not enter the checked section, and nothing should crash or teleport.
-- [ ] Drag with a **blank item** in the middle of the list. The blank row moves like any other.
-- [ ] Drag an **indented** item — indentation travels with it.
-- [ ] Reorder, then press back within 2 seconds. The new order persists (the mid-save id
+      *Passed, and this is the box that actually proves the key-based design.* With one item
+      checked, display order was `Bravo, Alpha, Foxtrot, (blank), Charlie` while list order was
+      still `Bravo, Alpha, Charlie, Foxtrot, (blank)` — Charlie displays last but is list index 2.
+      Dragging **display** row 2 moved Foxtrot, the row actually grabbed. An index-based
+      implementation would have moved Charlie. This is the bug that kept the feature out of the
+      original app, and it does not occur here.
+- [x] Drag with a **blank item** in the middle of the list. The blank row moves like any other.
+      *Passed — the blank participated in every drag above without special-casing.*
+- [x] Drag an **indented** item — indentation travels with it.
+      *Passed — `indentLevel=1` survived the move.*
+- [x] Reorder, then press back within 2 seconds. The new order persists (the mid-save id
       write-back guard is exactly this scenario).
-- [ ] Reorder while the numbered labels are visible — numbering re-flows to match the new order.
+      *Passed — backed out at +0s, inside the 2s debounce. Order persisted, no id churn.*
+- [x] Reorder while the numbered labels are visible — numbering re-flows to match the new order.
+      *Passed — renumbered 1, 2, 3 with the indented row correctly unnumbered.*
 - [ ] The row visibly lifts (highlight) while dragged, and drops cleanly.
-- [ ] TalkBack: the handle announces "Reorder" and is now a real, functioning control. (Gesture
+      *Not verifiable over adb: `input swipe` gives no window to capture mid-gesture. Needs eyes.*
+- [~] TalkBack: the handle announces "Reorder" and is now a real, functioning control. (Gesture
       alternatives for accessibility are a known gap — note what TalkBack offers, if anything.)
-- [ ] Checked items have **no** drag handle.
+      *Half done: the handle carries `contentDescription = "Reorder"`, confirmed in the
+      accessibility tree, so TalkBack has something to announce. Whether it can actually **perform**
+      a reorder is untested and needs a human with TalkBack on.*
+- [x] Checked items have **no** drag handle.
+      *Passed — 5 rows, 4 handles, and the checked row had none.*
 
 ---
 
