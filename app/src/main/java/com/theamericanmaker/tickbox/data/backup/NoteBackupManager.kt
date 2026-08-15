@@ -18,6 +18,8 @@ import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -39,35 +41,46 @@ class NoteBackupManager(
 ) {
 
     suspend fun exportNotes(uri: Uri): Unit = withContext(Dispatchers.IO) {
+        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+            exportTo(outputStream)
+            // A null stream used to return silently, which the list screen then
+            // reported as a successful export.
+        } ?: throw IOException("Could not open the selected location for writing.")
+    }
+
+    suspend fun importNotes(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            importFrom(inputStream)
+        } ?: throw ImportValidationException("Could not read the selected backup file.")
+    }
+
+    /** The whole export, minus the ContentResolver — which is what makes it testable. */
+    internal suspend fun exportTo(outputStream: OutputStream) {
         val notes = repository.getAllNotesWithItems()
         val allImages = repository.getAllImages()
 
-        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-            ZipOutputStream(BufferedOutputStream(outputStream)).use { zip ->
-                val json = buildExportJson(notes, allImages)
-                zip.putNextEntry(ZipEntry("notes.json"))
-                zip.write(json.toString(2).toByteArray())
-                zip.closeEntry()
+        ZipOutputStream(BufferedOutputStream(outputStream)).use { zip ->
+            val json = buildExportJson(notes, allImages)
+            zip.putNextEntry(ZipEntry("notes.json"))
+            zip.write(json.toString(2).toByteArray())
+            zip.closeEntry()
 
-                for (image in allImages) {
-                    val imageFile = imageStore.fileFor(image.filePath)
-                    if (imageFile.exists()) {
-                        zip.putNextEntry(ZipEntry("images/${image.filePath}"))
-                        imageFile.inputStream().use { it.copyTo(zip) }
-                        zip.closeEntry()
-                    }
+            for (image in allImages) {
+                val imageFile = imageStore.fileFor(image.filePath)
+                if (imageFile.exists()) {
+                    zip.putNextEntry(ZipEntry("images/${image.filePath}"))
+                    imageFile.inputStream().use { it.copyTo(zip) }
+                    zip.closeEntry()
                 }
             }
         }
     }
 
-    suspend fun importNotes(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
+    internal suspend fun importFrom(inputStream: InputStream): ImportResult {
         val stagingDir = File(context.cacheDir, "note_import_${System.currentTimeMillis()}")
-        try {
+        return try {
             val validatedArchive = try {
-                context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    NoteImportArchive.stageValidatedArchive(inputStream, stagingDir)
-                } ?: throw ImportValidationException("Could not read the selected backup file.")
+                NoteImportArchive.stageValidatedArchive(inputStream, stagingDir)
             } catch (e: ImportValidationException) {
                 throw e
             } catch (_: IOException) {
