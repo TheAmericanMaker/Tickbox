@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,23 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.ktlint)
 }
+
+// Release signing resolves from keystore.properties (local, gitignored) or environment
+// variables (CI), and tolerates having neither: a contributor with no key — and
+// F-Droid's build server, which never has one — gets an unsigned release APK instead of
+// a broken build.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun signingValue(property: String, environmentVariable: String): String? =
+    keystoreProperties.getProperty(property)
+        ?: System.getenv(environmentVariable)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile: File? = signingValue("storeFile", "KEYSTORE_FILE")
+    ?.let { rootProject.file(it) }
+    ?.takeIf { it.exists() }
 
 android {
     namespace = "com.theamericanmaker.tickbox"
@@ -22,6 +41,17 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseStoreFile != null) {
+                storeFile = releaseStoreFile
+                storePassword = signingValue("storePassword", "KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Lets a debug build sit alongside a release install, which is how the
@@ -36,6 +66,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Null means "no keystore available" and produces an unsigned APK.
+            signingConfig = if (releaseStoreFile != null) signingConfigs.getByName("release") else null
         }
     }
 

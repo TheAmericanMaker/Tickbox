@@ -1,0 +1,4 @@
+First release. Notes and checklists with indent, numbering, drag-to-reorder,
+bullet styles and list progress; search, pinning, colour labels; photo
+attachments with on-device text extraction; dictation; templates; share;
+full ZIP backup. No network permission — local-first by construction.

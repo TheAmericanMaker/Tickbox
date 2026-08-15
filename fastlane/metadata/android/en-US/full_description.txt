@@ -1,0 +1,20 @@
+Tickbox is a simple, local-first notes and checklists app. Your notes live on your
+device and nowhere else: the app declares no network permission at all, so it is
+incapable of sending your data anywhere.
+
+Features:
+
+* Text notes and checklists, with conversion between the two
+* Checklists done properly: indent levels, automatic numbering, five bullet styles,
+  drag-to-reorder, a tidy section for checked-off items, and progress ("3 of 8 done")
+  visible right on the note list
+* Search, filters, pinning, and colour labels
+* Photo attachments with a pinch-zoom viewer
+* Extract text from photos — fully on-device OCR (Tesseract); nothing leaves the phone
+* Voice dictation through your device's speech recognizer, disclosed before first use
+* Note templates and share as text or HTML
+* Full backup: export and import everything, including images, as a ZIP you own
+
+The only permission is Camera, for photo attachments, requested only when you use it.
+
+Tickbox is free software under GPL-3.0-or-later.
