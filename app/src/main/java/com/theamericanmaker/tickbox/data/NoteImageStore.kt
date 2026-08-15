@@ -39,10 +39,15 @@ class NoteImageStore(private val context: Context) {
             val fileName = "${UUID.randomUUID()}.jpg"
             val outFile = File(directory, fileName)
 
+            // decodeStream returns null on a bounds-only pass by contract, so the value to
+            // null-check here is the stream, never the decode result. Letting the elvis see
+            // the decode result makes this function fail for every image ever attached.
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use { input ->
+            val boundsRead = context.contentResolver.openInputStream(uri)?.use { input ->
                 BitmapFactory.decodeStream(input, null, bounds)
+                bounds.outWidth > 0 && bounds.outHeight > 0
             } ?: return@withContext null
+            if (!boundsRead) return@withContext null
 
             var sampleSize = 1
             while (bounds.outWidth / sampleSize > MAX_DIMENSION ||
