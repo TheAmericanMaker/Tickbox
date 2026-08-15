@@ -230,9 +230,13 @@ back for that to work. Neither half has run.
 All of section F was verified 2026-08-15 over adb — `input swipe` / `input tap` to drive it and
 `screencap` to read the result. Two notes on doing it that way, both learned the hard way:
 
-- **Check which screen you are on before every gesture.** A swipe that misses a card opens the note
-  under it, and every subsequent "swipe" then types into the editor instead. It is silent, and it
-  edits real notes.
+- **Check which screen you are on before every gesture, with a screenshot.** A swipe that misses a
+  card opens the note under it, and every subsequent "swipe" then types into the editor instead. It
+  is silent, and it edits real notes. `dumpsys activity` will not tell you: one `MainActivity` hosts
+  both screens through Compose navigation, so it reports the same either way.
+- **Getting back out takes two BACKs when the keyboard is up.** The first is consumed dismissing the
+  IME and the editor stays open — which looks exactly like having left, if you only check the
+  activity name. Confirm with `mInputShown` from `dumpsys input_method`, or just screenshot again.
 - **Deleting a card shifts everything below it.** Swiping the same coordinate twice hits a different
   note the second time, or none. Delete the *lower* card first and the upper one keeps its position.
 
