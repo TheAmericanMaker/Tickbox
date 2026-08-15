@@ -97,6 +97,8 @@ import com.theamericanmaker.tickbox.ui.edit.templates.TemplatePickerBottomSheet
 import com.theamericanmaker.tickbox.ui.share.NoteShareFormatter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.io.File
 
 private const val DICTATION_TARGET_TITLE = "title"
@@ -127,6 +129,12 @@ fun NoteEditScreen(
     var pendingDictationTarget by rememberSaveable { mutableStateOf<String?>(null) }
 
     val lazyListState = rememberLazyListState()
+    // Keys, not indices: the checklist displays as two filtered sections, so a row's
+    // on-screen position is not its index in the ViewModel's list. tempId is the one
+    // identity both sides agree on.
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        viewModel.onReorderChecklistItems(from.key, to.key)
+    }
     val isHeaderCollapsed by remember {
         derivedStateOf {
             lazyListState.firstVisibleItemIndex > 0 ||
@@ -565,21 +573,34 @@ fun NoteEditScreen(
                             key = { _, indexed -> indexed.value.tempId },
                         ) { listIndex, indexed ->
                             val actualIndex = indexed.index
-                            ChecklistItemRow(
-                                text = indexed.value.text,
-                                isChecked = false,
-                                onTextChange = { viewModel.onChecklistItemTextChange(actualIndex, it) },
-                                onCheckedChange = { viewModel.onChecklistItemCheckedChange(actualIndex, it) },
-                                onEnterPressed = { viewModel.onAddChecklistItem(actualIndex) },
-                                onDelete = { viewModel.onDeleteChecklistItem(actualIndex) },
-                                canDelete = state.checklistItems.size > 1,
-                                focusRequester = focusRequesters.getOrNull(actualIndex) ?: FocusRequester(),
-                                indentLevel = indexed.value.indentLevel,
-                                itemNumber = topLevelNumbers.getOrNull(listIndex),
-                                iconStyle = state.iconStyle,
-                                onIndent = { viewModel.onIndentItem(actualIndex) },
-                                onOutdent = { viewModel.onOutdentItem(actualIndex) },
-                            )
+                            ReorderableItem(reorderableState, key = indexed.value.tempId) { isDragging ->
+                                ChecklistItemRow(
+                                    text = indexed.value.text,
+                                    isChecked = false,
+                                    onTextChange = { viewModel.onChecklistItemTextChange(actualIndex, it) },
+                                    onCheckedChange = {
+                                        viewModel.onChecklistItemCheckedChange(actualIndex, it)
+                                    },
+                                    onEnterPressed = { viewModel.onAddChecklistItem(actualIndex) },
+                                    onDelete = { viewModel.onDeleteChecklistItem(actualIndex) },
+                                    canDelete = state.checklistItems.size > 1,
+                                    focusRequester = focusRequesters.getOrNull(actualIndex)
+                                        ?: FocusRequester(),
+                                    indentLevel = indexed.value.indentLevel,
+                                    itemNumber = topLevelNumbers.getOrNull(listIndex),
+                                    iconStyle = state.iconStyle,
+                                    onIndent = { viewModel.onIndentItem(actualIndex) },
+                                    onOutdent = { viewModel.onOutdentItem(actualIndex) },
+                                    dragHandleModifier = Modifier.draggableHandle(),
+                                    modifier = Modifier.background(
+                                        if (isDragging) {
+                                            MaterialTheme.colorScheme.surfaceContainerHigh
+                                        } else {
+                                            Color.Transparent
+                                        },
+                                    ),
+                                )
+                            }
                         }
 
                         item {

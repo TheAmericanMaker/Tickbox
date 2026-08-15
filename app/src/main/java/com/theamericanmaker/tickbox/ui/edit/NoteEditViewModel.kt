@@ -248,10 +248,23 @@ class NoteEditViewModel(
         scheduleAutoSave()
     }
 
-    fun onReorderChecklistItems(fromIndex: Int, toIndex: Int) {
+    /**
+     * Moves the item with [fromKey] to the position of the item with [toKey].
+     *
+     * Keys ([ChecklistItemUiState.tempId]) rather than indices, deliberately: the
+     * checklist renders as two filtered sections — unchecked, then checked — so a row's
+     * display position does not match its index in this list, and an index-based move
+     * computed from what is on screen would move the wrong item. Keys are unambiguous
+     * regardless of how the display slices the list. Only unchecked items are drag
+     * targets, and they appear in the same relative order on screen as here, so
+     * remove-and-insert lands the item exactly where the drag showed it.
+     */
+    fun onReorderChecklistItems(fromKey: Any?, toKey: Any?) {
         _uiState.update { state ->
             val items = state.checklistItems.toMutableList()
-            if (fromIndex !in items.indices || toIndex !in items.indices) return@update state
+            val fromIndex = items.indexOfFirst { it.tempId == fromKey }
+            val toIndex = items.indexOfFirst { it.tempId == toKey }
+            if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) return@update state
             items.add(toIndex, items.removeAt(fromIndex))
             state.copy(checklistItems = items)
         }
@@ -488,7 +501,12 @@ class NoteEditViewModel(
         }
 
         persistNewImages()
-        writeBackChecklistItemIds()
+        // Write-back assigns generated ids to id-less items by position, which is only
+        // sound while the list still matches the snapshot that was saved. A mid-save
+        // edit — now including a drag-reorder — re-marks the note dirty, so skip: the
+        // next save reconciles those rows as fresh inserts, costing one id churn on a
+        // brand-new row instead of ever attaching an id to the wrong item.
+        if (!isDirty) writeBackChecklistItemIds()
     }
 
     private suspend fun persistNewImages() {

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.FormatIndentDecrease
@@ -64,6 +65,12 @@ fun ChecklistItemRow(
     iconStyle: ChecklistIconStyle = ChecklistIconStyle.CHECKBOX,
     onIndent: (() -> Unit)? = null,
     onOutdent: (() -> Unit)? = null,
+    /**
+     * Drag gesture for reordering, created by the caller inside its reorderable scope.
+     * Null hides the handle — checked items are not draggable. The original app drew
+     * this handle with no gesture attached; it only comes back now that it works.
+     */
+    dragHandleModifier: Modifier? = null,
     modifier: Modifier = Modifier,
 ) {
     val textColor by animateColorAsState(
@@ -82,6 +89,17 @@ fun ChecklistItemRow(
             .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (dragHandleModifier != null) {
+            Icon(
+                imageVector = Icons.Filled.DragHandle,
+                contentDescription = "Reorder",
+                modifier = dragHandleModifier
+                    .size(28.dp)
+                    .padding(end = 4.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            )
+        }
+
         if (onOutdent != null && indentLevel > 0) {
             IconButton(onClick = onOutdent, modifier = Modifier.size(24.dp)) {
                 Icon(
