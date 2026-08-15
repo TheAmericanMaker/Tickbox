@@ -227,17 +227,49 @@ back for that to work. Neither half has run.
 
 ## F. List screen
 
-- [ ] Empty library shows "No notes yet. Tap + to write your first one."
-- [ ] Search with no matches shows a **different** message naming the query.
-- [ ] Filtering to Checklists with none shows a **third** message. (All three used to be the same
-      text, which read as the search having broken.)
-- [ ] Swipe a note left — it deletes with an Undo snackbar; Undo restores it.
-- [ ] Let the snackbar expire — the note is really gone.
-- [ ] Delete a note, and while the snackbar is still showing, delete a **second** one. The first
-      commits immediately; only the second is undoable.
-- [ ] Pin and unpin; pinned notes sort to the top under a "Pinned" header.
-- [ ] Colour labels tint the note cards, and the card stays opaque while swiping (no red bleed
+All of section F was verified 2026-08-15 over adb — `input swipe` / `input tap` to drive it and
+`screencap` to read the result. Two notes on doing it that way, both learned the hard way:
+
+- **Check which screen you are on before every gesture.** A swipe that misses a card opens the note
+  under it, and every subsequent "swipe" then types into the editor instead. It is silent, and it
+  edits real notes.
+- **Deleting a card shifts everything below it.** Swiping the same coordinate twice hits a different
+  note the second time, or none. Delete the *lower* card first and the upper one keeps its position.
+
+For the empty states, swapping the database is far safer than deleting notes through the UI:
+force-stop, `cat` a prepared database over `databases/tickbox.db`, delete the `-wal` and `-shm`, and
+relaunch. Back up the images too — an empty database makes every one of them an orphan, and any file
+older than the 24h guard is swept on that launch.
+
+- [x] Empty library shows "No notes yet. Tap + to write your first one." *Passed.*
+- [x] Search with no matches shows a **different** message naming the query. *Passed —
+      "No notes match "…".", with the query quoted.*
+- [x] Filtering to Checklists with none shows a **third** message. (All three used to be the same
+      text, which read as the search having broken.) *Passed — "No checklists yet. Tap + to start
+      one." All three messages and all three icons are distinct.*
+- [x] Swipe a note left — it deletes with an Undo snackbar; Undo restores it. *Passed.*
+- [x] Let the snackbar expire — the note is really gone. *Passed.*
+- [x] Delete a note, and while the snackbar is still showing, delete a **second** one. The first
+      commits immediately; only the second is undoable. *Passed — the first was committed and only
+      the second came back.*
+- [x] Pin and unpin; pinned notes sort to the top under a "Pinned" header. *Passed — "Pinned" and
+      "Other" headers both render and the pin icon fills.*
+
+      **Pinning gives no visible feedback.** The note moves to the top of the list, but the list
+      does not scroll to follow it, so from anywhere below the fold the app appears to do nothing.
+      Not a correctness bug — the sort, headers and icon are all right — but it reads as a dead
+      button. Scrolling the pinned item into view would fix it; left alone deliberately, since it
+      is a design decision rather than a defect.
+- [x] Colour labels tint the note cards, and the card stays opaque while swiping (no red bleed
       through from the delete background).
+
+      **Found and fixed 2026-08-15:** every card sat inside a permanent red frame with no swipe in
+      progress. `SwipeToDismissBox` draws its background across the whole row and the card applied
+      its own inset, so the margin exposed the `errorContainer` fill. The inset moved to the swipe
+      container. **Inherited** — Smart Toolkit builds the row the same way.
+
+      The **tint** half of this box is still unverified: no note in the test library has a colour
+      label set.
 
 ---
 
