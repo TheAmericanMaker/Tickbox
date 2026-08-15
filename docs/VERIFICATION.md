@@ -145,20 +145,53 @@ back for that to work. Neither half has run.
       (plain `savedNoteId`, cancel-and-restart `autoSaveJob`, assignment after the insert), so it
       is reachable there too and did not on its own block 1.0.
 - [ ] Predictive back / gesture back behaves the same as the top-bar arrow.
+- [x] Open several notes, read them, back out of each **without typing**. None of their `updatedAt`
+      values change and the list order does not move.
+
+      **Found 2026-08-15:** back-press saved unconditionally, so merely opening a note rewrote it.
+      `updatedAt` came to mean "last looked at" rather than "last changed", and since the list
+      sorts on it, browsing the library permanently reordered it — the note you actually edited
+      last sinks while the one you glanced at rises. `save()` now skips when nothing changed.
+      **Inherited** — Smart Toolkit has no dirty tracking either.
+
+      That guard is only safe while every user mutation routes through `scheduleAutoSave`, which
+      is what marks the note dirty. **`onAddChecklistItem` did not**, and was being covered by the
+      unconditional save; it does now. A new mutating function that forgets will have its change
+      dropped on back rather than quietly caught, so re-run this audit when adding one:
+
+      ```bash
+      grep -n "fun on\|_uiState.update\|scheduleAutoSave()" app/src/main/java/com/theamericanmaker/tickbox/ui/edit/NoteEditViewModel.kt
+      ```
+
+      `extractTextFrom` will show up as missing it and is fine: the only state it touches directly
+      is the progress flag, and its text reaches a save through `insertLines`.
 
 ---
 
 ## D. Images
 
-- [ ] Attach from gallery. Thumbnail appears.
-- [ ] Take a photo. Camera permission is requested on first use; denying it fails gracefully.
-- [ ] Attach 5 images, then try a 6th — it is refused rather than silently dropped.
+- [x] Attach from gallery. Thumbnail appears. *Passed 2026-08-15, after the fix in `4888983` —
+      this failed for every image before it.*
+- [x] Take a photo. Camera permission is requested on first use; denying it fails gracefully.
+      *Capture passed 2026-08-15 after `ebf32b9`. **The deny path is still untested** — only the
+      granted path has been exercised.*
+- [x] Attach 5 images, then try a 6th — it is refused rather than silently dropped. *Passed
+      2026-08-15: the cap is enforced by **hiding** the Gallery and Camera tiles at 5, so a sixth
+      cannot be attempted rather than being rejected with a message. The `MAX_IMAGES_PER_NOTE`
+      guard behind it returns silently, so if that affordance ever becomes reachable at the cap,
+      the drop would be silent. All three constants agree at 5 — editor, attachment row, and the
+      import path.*
 - [ ] Tap an image — full-screen viewer opens, pinch-zoom and pan work.
 - [ ] There is **no "Extract text" button** and no OCR badge. Correct until Tesseract lands.
-- [ ] Remove an image — it disappears, and the file is gone from disk:
+- [x] Remove an image — it disappears, and the file is gone from disk:
       `adb shell run-as com.theamericanmaker.tickbox.debug ls files/note_images`
-- [ ] Delete a note that has images. Wait past the 5s undo window. The files are gone from
-      `note_images/`. **This is the orphan cleanup working.**
+      *Passed 2026-08-15 — row and file both gone.*
+- [x] Delete a note that has images. Wait past the 5s undo window. The files are gone from
+      `note_images/`. **This is the orphan cleanup working.** *Passed 2026-08-15: the note row
+      went, its `note_images` row cascaded, and the file was removed from disk. This is
+      `deleteNote` returning paths for the caller to delete once the undo window closes — a
+      different path from the startup sweep below, and worth keeping distinct when one of them
+      fails.*
 - [x] Then relaunch the app and confirm the startup sweep did **not** delete anything still in use.
 
       A fresh library cannot test this at all. Every file in it is minutes old, the sweep skips
