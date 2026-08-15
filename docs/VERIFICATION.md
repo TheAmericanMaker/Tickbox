@@ -59,12 +59,22 @@ back for that to work. Neither half has run.
 - [ ] Create a checklist, add several items, back out, reopen — all items present, in order.
 - [ ] Reopen, edit **one** item's text, wait past the 2s autosave, back out, reopen — only that
       item changed.
-- [ ] Add an item in the middle, save, then edit a **different** item. The edit lands on the item
-      you meant, not a neighbour.
-- [ ] Delete an item, save, reopen — it stays deleted, and nothing else shifted.
-- [ ] Indent an item, save, reopen — indentation persisted.
-- [ ] Check an item; it moves into the "N checked items" section. Reopen — still checked, still
-      there.
+- [x] Add an item in the middle, save, then edit a **different** item. The edit lands on the item
+      you meant, not a neighbour. *Passed 2026-08-15: the new row took a fresh id and the item it
+      displaced kept its own, so the later edit landed on the row intended rather than the one now
+      occupying that position. This is the box that distinguishes mapping by identity from mapping
+      by index; the two are indistinguishable in the UI until text appears on the wrong line.*
+- [x] Delete an item, save, reopen — it stays deleted, and nothing else shifted. *Passed
+      2026-08-15: the row was gone, no orphaned `checklist_items` remained, and every surviving
+      item kept its id. First execution of the delete branch of the reconciliation.*
+- [x] Indent an item, save, reopen — indentation persisted. *Passed 2026-08-15.*
+- [x] Check an item; it moves into the "N checked items" section. Reopen — still checked, still
+      there. *Passed 2026-08-15 — checked state persisted.*
+
+      Measured while confirming it: **the checked item kept its stored `position`.** It moves
+      between sections visually without its underlying index changing, which is the display-order
+      / list-index divergence that makes drag-to-reorder a remodelling job rather than a wiring
+      one. That is no longer inference from reading the code — it is observed.
 - [ ] Uncheck it; it returns to the main list.
 - [x] Type in **bursts** in one item — a few words, pause ~3 seconds, repeat 10–15 times. When you
       reopen, the text should be complete and the list unchanged. **If item identity is breaking,
