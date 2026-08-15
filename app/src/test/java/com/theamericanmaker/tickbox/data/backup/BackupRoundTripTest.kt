@@ -98,9 +98,9 @@ class BackupRoundTripTest {
         assertEquals(2, result.notesImported)
         assertEquals(1, result.imagesImported)
 
-        val notes = repository.getAllNotesWithItems().sortedBy { it.title }
+        val notes = repository.getAllNotesWithItems()
 
-        val list = notes[0]
+        val list = notes.first { it.type == NoteType.CHECKLIST }
         assertEquals("Packing", list.title)
         assertEquals(NoteType.CHECKLIST, list.type)
         assertEquals(ChecklistIconStyle.STAR, list.iconStyle)
@@ -114,7 +114,7 @@ class BackupRoundTripTest {
         assertNotEquals("test.jpg", list.images.single().filePath)
         assertArrayEquals(imageBytes, imageStore.fileFor(list.images.single().filePath).readBytes())
 
-        val text = notes[1]
+        val text = notes.first { it.type == NoteType.TEXT }
         assertEquals("Grocery run 🛒 & more", text.title)
         assertEquals("Don't forget the <good> bread", text.content)
         assertEquals("Shopping", text.category)
