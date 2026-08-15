@@ -83,16 +83,23 @@ back for that to work. Neither half has run.
       persisted once typing stopped, and ids were unchanged (`9, 10, 11`) — the reconciliation holds
       under sustained editing.
 
-      Worth knowing rather than fixing: **nothing at all reaches the database during those 30
-      seconds.** `AUTOSAVE_DELAY_MS` is 2 s and `scheduleAutoSave` cancels the pending job on every
-      keystroke, so a fast typist never reaches the delay and the unsaved window is unbounded — 30 s
-      of typing was 30 s of data one process death away from gone. A throttle (save at least every
-      N seconds regardless) is the standard remedy. **Inherited** — Smart Toolkit's
-      `NotepadViewModel` cancels and relaunches the same way.
+      Found and fixed in the same pass — [#17](https://github.com/TheAmericanMaker/Tickbox/issues/17):
+      **nothing at all reached the database during those 30 seconds.** `scheduleAutoSave` cancelled
+      the pending job on every keystroke, so a fast typist never reached the 2 s delay and the
+      unsaved window was unbounded. **Inherited** — Smart Toolkit cancels and relaunches the same
+      way.
+
+      The wait is now also capped at 10 s from the first unsaved edit. **Verified:** after 14 s of
+      continuous typing, reading the database immediately — before the 2 s debounce could have
+      fired — showed the item grown from 179 to 313 characters. Before the fix that read returned
+      the original 179. Reading "immediately" is the whole test; leave it longer than 2 s and the
+      debounce fires and tells you nothing.
 - [x] Add items by pressing **Enter** repeatedly until the list is longer than the visible area.
       Each new row should take the caret.
 
-      **Found 2026-08-15 — it does not.** Enter creates the row correctly (the database showed 7
+      **Found and fixed 2026-08-15 —
+      [#16](https://github.com/TheAmericanMaker/Tickbox/issues/16).** Enter created the row
+      correctly (the database showed 7
       rows while the screen showed 3), but if the new row is below the fold it is never composed,
       `requestFocus()` fails, and `NoteEditScreen`'s collector swallows it:
 
@@ -113,9 +120,14 @@ back for that to work. Neither half has run.
       well inside the length of an ordinary shopping list, which is what the app is for.
 
       **Inherited** — Smart Toolkit's `NoteEditScreen.kt:167` is the same code, and its only
-      `animateScrollToItem` is the scroll-to-top affordance. The fix is to scroll the target into
-      view before requesting focus, which needs the checklist-index → lazy-index mapping that the
-      two-section layout makes non-obvious. Not a one-liner.
+      `animateScrollToItem` is the scroll-to-top affordance.
+
+      Fixed by scrolling the row into view before requesting focus. Unchecked rows are one lazy item
+      each in list order, so the mapping is "count the unchecked items ahead of it"; the scroll only
+      runs when the row is genuinely off screen, since `scrollToItem` parks it at the top of the
+      viewport and that would lurch for a row already visible. **Verified:** the same
+      Alpha/Bravo/Charlie/Delta/Echo sequence now produces five separate rows, on a note whose
+      attached image makes the fold tighter still.
 - [x] Switch a checklist to a text note and back. Item text survives the round trip (checked state
       and indentation are expected to be dropped — that conversion is lossy by design).
 
@@ -202,23 +214,42 @@ back for that to work. Neither half has run.
 - [x] Attached photos appear **the right way up**, from both the camera and the gallery, whichever
       way the phone was held.
 
-      **Failed 2026-08-15 —
-      [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14).** Every camera photo is stored
-      rotated: shot normally it lands on its side, shot with the phone sideways it lands
-      upside-down. `saveFromUri` decodes with `BitmapFactory` (which ignores EXIF `Orientation`) and
-      re-encodes with `compress` (which writes none), so the rotation is baked into the pixels and
-      the tag that would have corrected it is destroyed. Confirmed on the pulled files: three camera
+      **Failed then fixed 2026-08-15 —
+      [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14).** Every camera photo was stored
+      rotated: shot normally it landed on its side, shot with the phone sideways it landed
+      upside-down. `saveFromUri` decoded with `BitmapFactory` (which ignores EXIF `Orientation`) and
+      re-encoded with `compress` (which writes none), so the rotation was baked into the pixels and
+      the tag that would have corrected it destroyed. Confirmed on the pulled files: three camera
       photos all stored 2000×1500 landscape with **no EXIF**; the only image that read correctly was
       a screenshot, which never depended on a tag.
 
-      **Inherited**, but do not treat it as non-blocking on that basis — Smart Toolkit used ML Kit,
-      which takes a rotation hint and tolerated it. Tesseract does not, so this now breaks section J
-      outright.
+      **Inherited**, but it was not therefore non-blocking — Smart Toolkit used ML Kit, which takes
+      a rotation hint and tolerated it. Tesseract does not, so this broke section J outright.
+
+      Fixed by reading the tag before decoding and baking the rotation into the pixels. **Verified
+      with crafted fixtures:** an 800×400 landscape JPEG tagged `Orientation=6` now stores as
+      **400×800 portrait** with the marker band on the right edge — matching exactly what the system
+      photo picker renders. All eight orientations are handled, mirrors included.
+
+      To re-test: generate fixtures with PIL (`exif[274] = orientation`), `adb push` them to
+      `/sdcard/Pictures/`, broadcast `MEDIA_SCANNER_SCAN_FILE` so the picker sees them, attach, then
+      pull from `files/note_images` and compare dimensions. The stored size flipping from landscape
+      to portrait is the assertion — it needs no eyes.
+
+      **Images attached before this fix are not recoverable.** The rotation is baked in the wrong
+      way and there is no tag left to correct from; they need re-attaching.
 - [x] Take a photo **with the phone in a different orientation than the editor**, and confirm it
       attaches. *Failed 2026-08-15 —
-      [#15](https://github.com/TheAmericanMaker/Tickbox/issues/15): the photo is silently discarded.
-      `cameraImageUri` is plain `remember`, so the rotation recreates the activity and the pending
-      uri is gone by the time the camera returns. No snackbar, and the temp file leaks too.*
+      [#15](https://github.com/TheAmericanMaker/Tickbox/issues/15): the photo was silently
+      discarded. `cameraImageUri` was plain `remember`, so the rotation recreated the activity and
+      the pending uri was gone by the time the camera returned. No snackbar, and the temp file
+      leaked too.*
+
+      *Fixed — `rememberSaveable` for both, plus a message when the capture succeeds but its
+      destination was lost. **Not yet re-run on hardware**: it needs a configuration change while
+      the camera activity is open. Either repeat it by hand, or set
+      `adb shell settings put global always_finish_activities 1` to force the recreation
+      deterministically — and put it back to `0` afterwards.*
 - [ ] The OCR badge shows on thumbnails and the viewer has an "Extract text" button — both
       appeared automatically when the Tesseract engine landed (they were gated on one existing).
       Full OCR checks live in section J.
@@ -463,13 +494,13 @@ Wired 2026-08-15 (tesseract4android 4.9.0 + bundled `tessdata_fast/eng`). Compil
 is to *drop OCR from 1.0* if results embarrass the app, and the upgrade path is the standard
 `tessdata` model (~15 MB instead of ~4 MB).
 
-> **Blocked, 2026-08-15 — finish this section only after
-> [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14) is fixed.** The first attempt found
-> that every camera photo is stored rotated, because EXIF orientation is dropped on import. Tesseract
-> has no tolerance for that, so the boxes below are currently measuring the rotation bug rather than
-> OCR quality, and any verdict drawn from them would be wrong.
+> **Unblocked 2026-08-15 — re-run this section from scratch on freshly taken photos.** The first
+> attempt was invalidated by [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14): every
+> camera photo was stored rotated, so the boxes were measuring that bug rather than OCR quality.
+> #14 is fixed and verified, but **photos attached before the fix are still wrong and cannot be
+> corrected** — retake them rather than re-extracting from the ones already on the note.
 >
-> What the attempt did establish, which is the useful half:
+> What the first attempt established, which is the useful half and still stands:
 >
 > - On an **upright** image, `tessdata_fast` is **good** — a screenshot of dense UI text came back
 >   near-perfect, including layout and punctuation. That is the one data point taken on an image
