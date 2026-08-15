@@ -186,9 +186,16 @@ fun NoteEditScreen(
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture(),
     ) { success ->
-        if (success) cameraImageUri?.let { viewModel.addImageFromUri(it) }
-        cameraTempFile?.delete()
+        val tempFile = cameraTempFile
         cameraTempFile = null
+        val captured = cameraImageUri.takeIf { success }
+        if (captured != null) {
+            // The copy runs on a coroutine, so deleting the temp file here would race it —
+            // and win. Cleanup waits until the copy has finished reading.
+            viewModel.addImageFromUri(captured) { tempFile?.delete() }
+        } else {
+            tempFile?.delete()
+        }
     }
 
     val launchCameraInternal: () -> Unit = {

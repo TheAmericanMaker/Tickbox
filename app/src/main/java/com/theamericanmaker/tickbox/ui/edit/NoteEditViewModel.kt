@@ -271,15 +271,26 @@ class NoteEditViewModel(
 
     fun imageFile(fileName: String): File = imageStore.fileFor(fileName)
 
-    fun addImageFromUri(uri: Uri) {
+    /**
+     * Copies [uri] into the image store.
+     *
+     * [onFinished] runs once the copy has finished reading, successfully or not. The camera
+     * flow needs it: its source is a temporary file the caller owns, and deleting that file
+     * before the copy has read it is exactly the race this callback exists to prevent.
+     */
+    fun addImageFromUri(uri: Uri, onFinished: () -> Unit = {}) {
         viewModelScope.launch {
-            if (_uiState.value.images.size >= MAX_IMAGES_PER_NOTE) return@launch
-            val filePath = imageStore.saveFromUri(uri) ?: run {
-                _message.emit("Could not add that image.")
-                return@launch
+            try {
+                if (_uiState.value.images.size >= MAX_IMAGES_PER_NOTE) return@launch
+                val filePath = imageStore.saveFromUri(uri) ?: run {
+                    _message.emit("Could not add that image.")
+                    return@launch
+                }
+                _uiState.update { it.copy(images = it.images + NoteImageUiState(filePath = filePath, isNew = true)) }
+                scheduleAutoSave()
+            } finally {
+                onFinished()
             }
-            _uiState.update { it.copy(images = it.images + NoteImageUiState(filePath = filePath, isNew = true)) }
-            scheduleAutoSave()
         }
     }
 
