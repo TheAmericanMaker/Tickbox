@@ -102,6 +102,20 @@ back for that to work. Neither half has run.
 - [ ] Switch a checklist to a text note and back. Item text survives the round trip (checked state
       and indentation are expected to be dropped — that conversion is lossy by design).
 
+      Check that the item text is **visible in the body immediately**, not merely stored. Those are
+      different things and only one of them is observable: `state.content` and the database can
+      both be correct while the editor shows the empty body it had as a checklist, because the
+      content field keeps its own `TextFieldValue` and follows only deliberate external writes.
+
+      **Found 2026-08-15:** converting to a text note displayed an empty note. The text was never
+      actually lost — it was in state, it was saved, and converting back restored it — but it read
+      as total loss, and typing into the apparently-empty note would have overwritten the real
+      content and made it loss in fact. `onToggleType` now emits the converted text so the field
+      follows it. **Inherited** — Smart Toolkit's `onToggleType` has the same omission.
+
+      Item ids changing across the round trip is correct, not a regression: the conversion rebuilds
+      items from text, so the reconciliation inserts new rows and deletes the old ones.
+
 ---
 
 ## C. Autosave and back behaviour

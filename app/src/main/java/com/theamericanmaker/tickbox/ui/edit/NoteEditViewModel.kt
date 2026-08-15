@@ -167,20 +167,28 @@ class NoteEditViewModel(
     }
 
     fun onToggleType() {
-        _uiState.update { state ->
-            if (state.type == NoteType.TEXT) {
+        if (_uiState.value.type == NoteType.TEXT) {
+            _uiState.update { state ->
                 state.copy(
                     type = NoteType.CHECKLIST,
                     checklistItems = ChecklistConversion.textToItems(state.content),
                     content = "",
                 )
-            } else {
+            }
+        } else {
+            val converted = ChecklistConversion.itemsToText(_uiState.value.checklistItems)
+            _uiState.update { state ->
                 state.copy(
                     type = NoteType.TEXT,
-                    content = ChecklistConversion.itemsToText(state.checklistItems),
+                    content = converted,
                     checklistItems = emptyList(),
                 )
             }
+            // The content field holds its own TextFieldValue and only follows deliberate
+            // external writes. Without this the converted text lands in state and in the
+            // database but the editor shows the empty body it had as a checklist, which
+            // reads as having lost the note — and typing into it would then make that true.
+            viewModelScope.launch { _contentExternalUpdate.emit(converted) }
         }
         scheduleAutoSave()
     }
