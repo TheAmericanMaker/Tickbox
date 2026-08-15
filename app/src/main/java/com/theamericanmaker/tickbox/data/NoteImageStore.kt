@@ -6,6 +6,8 @@ package com.theamericanmaker.tickbox.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -56,10 +58,17 @@ class NoteImageStore(private val context: Context) {
                 sampleSize *= 2
             }
 
-            val bitmap = context.contentResolver.openInputStream(uri)?.use { input ->
+            // Read the orientation before decoding, from its own stream. BitmapFactory returns
+            // pixels in stored order and never consults EXIF, and compress() writes a JPEG with
+            // no EXIF at all — so without this the tag is read by nobody and then destroyed, and
+            // the photo is sideways for good. Invisible on a screenshot, fatal to OCR on a photo.
+            val orientation = readOrientation(uri)
+
+            val decoded = context.contentResolver.openInputStream(uri)?.use { input ->
                 BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inSampleSize = sampleSize })
             } ?: return@withContext null
 
+            val bitmap = decoded.withOrientationApplied(orientation)
             try {
                 FileOutputStream(outFile).use { out ->
                     bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
@@ -72,6 +81,57 @@ class NoteImageStore(private val context: Context) {
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * The EXIF orientation of [uri], or [ExifInterface.ORIENTATION_NORMAL] when it has none.
+     *
+     * The framework `ExifInterface` rather than the AndroidX one: it has read from a stream since
+     * API 24, which covers this app's `minSdk 26`, and one tag does not justify a dependency. If
+     * formats beyond JPEG ever matter, `androidx.exifinterface` is the drop-in.
+     *
+     * Never throws. An image with unreadable metadata should still attach, just unrotated.
+     */
+    private fun readOrientation(uri: Uri): Int = runCatching {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            ExifInterface(input).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL,
+            )
+        }
+    }.getOrNull() ?: ExifInterface.ORIENTATION_NORMAL
+
+    /**
+     * Bakes [orientation] into the pixels, returning the receiver unchanged when there is nothing
+     * to do. Recycles the original once it has been superseded.
+     *
+     * Baking rather than writing the tag onto the output is deliberate: Compose, Tesseract and the
+     * ZIP export then agree without any of them having to interpret EXIF, and an exported archive
+     * stays a folder of plainly readable JPEGs.
+     */
+    private fun Bitmap.withOrientationApplied(orientation: Int): Bitmap {
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+            // Transpose and transverse are a rotation plus a mirror. Rare from phone cameras,
+            // but scanner apps emit them, and half-applying one is as wrong as ignoring it.
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.postRotate(90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.postRotate(270f)
+                matrix.postScale(-1f, 1f)
+            }
+            else -> return this
+        }
+        val reoriented = Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
+        if (reoriented != this) recycle()
+        return reoriented
     }
 
     suspend fun delete(fileNames: Collection<String>) = withContext(Dispatchers.IO) {

@@ -40,6 +40,9 @@ import java.util.UUID
 /** Debounce between the last edit and an automatic save. */
 private const val AUTOSAVE_DELAY_MS = 2_000L
 
+/** Ceiling on the debounce, so sustained typing still reaches disk. See `scheduleAutoSave`. */
+private const val AUTOSAVE_MAX_WAIT_MS = 10_000L
+
 /** Indentation is capped at one level for 1.0. */
 private const val MAX_INDENT_LEVEL = 1
 
@@ -111,6 +114,9 @@ class NoteEditViewModel(
     private var savedNoteId: Long = noteId
     private var autoSaveJob: Job? = null
     private var isDirty = false
+
+    /** When the current run of unsaved edits began, or 0 when there is nothing pending. */
+    private var dirtySince = 0L
 
     init {
         if (noteId > 0) {
@@ -200,6 +206,37 @@ class NoteEditViewModel(
 
     fun onChecklistItemCheckedChange(index: Int, checked: Boolean) {
         updateItem(index) { it.copy(isChecked = checked) }
+    }
+
+    /**
+     * Unchecks everything, in place.
+     *
+     * Positions are untouched, so a weekly shopping list comes back in the order it was built
+     * rather than reshuffled by whatever order things were ticked off in.
+     */
+    fun onUncheckAll() {
+        if (_uiState.value.checklistItems.none { it.isChecked }) return
+        _uiState.update { state ->
+            state.copy(checklistItems = state.checklistItems.map { it.copy(isChecked = false) })
+        }
+        scheduleAutoSave()
+    }
+
+    /**
+     * Removes every checked item.
+     *
+     * Keeps one blank row if that would empty the list, because the editor assumes a checklist is
+     * never completely empty — `canDelete` guards the same invariant on the per-row delete.
+     */
+    fun onDeleteChecked() {
+        if (_uiState.value.checklistItems.none { it.isChecked }) return
+        _uiState.update { state ->
+            val remaining = state.checklistItems.filterNot { it.isChecked }
+            state.copy(
+                checklistItems = remaining.ifEmpty { listOf(ChecklistItemUiState()) },
+            )
+        }
+        scheduleAutoSave()
     }
 
     fun onIndentItem(index: Int) {
@@ -419,11 +456,26 @@ class NoteEditViewModel(
         scheduleAutoSave()
     }
 
+    /**
+     * Debounced, but with a ceiling.
+     *
+     * The debounce alone had no upper bound: every keystroke cancelled the pending job and
+     * restarted the 2 s timer, so anyone typing steadily never reached it. Measured on device,
+     * 30 seconds of continuous typing produced zero writes — nothing was lost, because the save
+     * fired the moment typing stopped, but the window of unsaved work grew without limit.
+     *
+     * So the wait is also capped at [AUTOSAVE_MAX_WAIT_MS] measured from the *first* unsaved edit.
+     * A typist who never pauses still gets a save every ten seconds; everyone else is unaffected,
+     * because a 2 s pause arrives long before the ceiling does.
+     */
     private fun scheduleAutoSave() {
         isDirty = true
+        if (dirtySince == 0L) dirtySince = System.currentTimeMillis()
         autoSaveJob?.cancel()
         autoSaveJob = viewModelScope.launch {
-            delay(AUTOSAVE_DELAY_MS)
+            val waitedSoFar = System.currentTimeMillis() - dirtySince
+            val remainingCeiling = (AUTOSAVE_MAX_WAIT_MS - waitedSoFar).coerceAtLeast(0L)
+            delay(minOf(AUTOSAVE_DELAY_MS, remainingCeiling))
             saveNow()
         }
     }
@@ -462,6 +514,7 @@ class NoteEditViewModel(
         // Cleared against this snapshot, so an edit arriving mid-save re-marks the note and the
         // next save picks it up rather than the change being swallowed.
         isDirty = false
+        dirtySince = 0L
         val hasContent = state.title.isNotBlank() ||
             state.content.isNotBlank() ||
             state.checklistItems.any { it.text.isNotBlank() }

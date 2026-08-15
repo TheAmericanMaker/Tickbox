@@ -43,17 +43,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FormatColorReset
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,6 +84,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -88,21 +95,23 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.ui.focus.FocusRequester
 import com.theamericanmaker.tickbox.data.model.ChecklistIconStyle
 import com.theamericanmaker.tickbox.data.model.ChecklistItem
 import com.theamericanmaker.tickbox.data.model.NoteType
 import com.theamericanmaker.tickbox.ui.NotesTopBar
 import com.theamericanmaker.tickbox.ui.edit.templates.TemplatePickerBottomSheet
 import com.theamericanmaker.tickbox.ui.share.NoteShareFormatter
+import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import java.io.File
 
 private const val DICTATION_TARGET_TITLE = "title"
 private const val DICTATION_TARGET_CONTENT = "content"
+
+/** One beat for a newly added row to compose and lay out before it is measured or focused. */
+private const val FOCUS_LAYOUT_SETTLE_MS = 100L
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -127,6 +136,9 @@ fun NoteEditScreen(
     var contentInitialized by rememberSaveable { mutableStateOf(false) }
     var showDictationDisclosure by rememberSaveable { mutableStateOf(false) }
     var pendingDictationTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    // Starts expanded, so nothing a user already had in front of them disappears on upgrade.
+    var checkedExpanded by rememberSaveable { mutableStateOf(true) }
+    var showEditorMenu by remember { mutableStateOf(false) }
 
     val lazyListState = rememberLazyListState()
     // Keys, not indices: the checklist displays as two filtered sections, so a row's
@@ -177,9 +189,29 @@ fun NoteEditScreen(
 
     LaunchedEffect(Unit) {
         viewModel.focusItemIndex.collect { index ->
-            // The row has to exist and be composed before it can take focus.
-            delay(100)
+            // The row has to exist and be composed before it can take focus — and a row below the
+            // fold is not composed at all. Its FocusRequester is never attached, requestFocus()
+            // throws, and the caret silently stays put while everything the user types next lands
+            // in the *previous* item. Waiting longer cannot fix that; only scrolling can.
+            //
+            // Unchecked rows are one lazy item each, in list order, so a checklist index maps to a
+            // lazy index by counting the unchecked items ahead of it. New rows are always
+            // unchecked, which is the only case that reaches here.
+            delay(FOCUS_LAYOUT_SETTLE_MS)
+            val items = viewModel.uiState.value.checklistItems
+            if (items.getOrNull(index)?.isChecked == false) {
+                val lazyIndex = items.take(index).count { !it.isChecked }
+                // Only when it is genuinely off screen: scrollToItem puts the row at the top of
+                // the viewport, which would be a visible lurch for a row already in view.
+                val onScreen = lazyListState.layoutInfo.visibleItemsInfo.any { it.index == lazyIndex }
+                if (!onScreen) {
+                    runCatching { lazyListState.scrollToItem(lazyIndex) }
+                    delay(FOCUS_LAYOUT_SETTLE_MS)
+                }
+            }
             if (index in focusRequesters.indices) {
+                // Still guarded: the row can be deleted between the emit and here. What this no
+                // longer hides is the routine off-screen case, which the scroll above handles.
                 runCatching { focusRequesters[index].requestFocus() }
             }
         }
@@ -189,27 +221,39 @@ fun NoteEditScreen(
         contract = ActivityResultContracts.PickVisualMedia(),
     ) { uri: Uri? -> uri?.let { viewModel.addImageFromUri(it) } }
 
-    var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
-    var cameraTempFile by remember { mutableStateOf<File?>(null) }
+    // rememberSaveable, not remember: the camera is a separate activity, and rotating or folding
+    // the device while it is open recreates this one. Plain remember loses the pending uri, and
+    // the result callback then reads null and discards a photo the user watched themselves take.
+    // The path travels as a String because File is not one of the types the saver handles.
+    var cameraImageUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var cameraTempPath by rememberSaveable { mutableStateOf<String?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture(),
     ) { success ->
-        val tempFile = cameraTempFile
-        cameraTempFile = null
-        val captured = cameraImageUri.takeIf { success }
-        if (captured != null) {
-            // The copy runs on a coroutine, so deleting the temp file here would race it —
-            // and win. Cleanup waits until the copy has finished reading.
-            viewModel.addImageFromUri(captured) { tempFile?.delete() }
-        } else {
-            tempFile?.delete()
+        val tempFile = cameraTempPath?.let(::File)
+        val captured = cameraImageUri
+        cameraTempPath = null
+        cameraImageUri = null
+        when {
+            success && captured != null ->
+                // The copy runs on a coroutine, so deleting the temp file here would race it —
+                // and win. Cleanup waits until the copy has finished reading.
+                viewModel.addImageFromUri(captured) { tempFile?.delete() }
+            // The camera reported a picture but we no longer know where it went. Saying so beats
+            // the silence this used to produce, which was indistinguishable from a dead shutter.
+            success -> {
+                tempFile?.delete()
+                coroutineScope.launch { snackbarHostState.showSnackbar("That photo could not be attached. Try again.") }
+            }
+            // Cancelled: no picture was taken, so there is nothing to report.
+            else -> tempFile?.delete()
         }
     }
 
     val launchCameraInternal: () -> Unit = {
         val tempDir = File(context.cacheDir, "camera_temp").apply { mkdirs() }
         val tempFile = File(tempDir, "photo_${System.currentTimeMillis()}.jpg")
-        cameraTempFile = tempFile
+        cameraTempPath = tempFile.absolutePath
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
         cameraImageUri = uri
         cameraLauncher.launch(uri)
@@ -370,6 +414,36 @@ fun NoteEditScreen(
                         enabled = hasAnyContent,
                     ) {
                         Icon(Icons.Filled.Share, contentDescription = "Share")
+                    }
+                    // Only earns a slot when there is something checked to act on: on a text note
+                    // or a fresh checklist both entries would be dead.
+                    if (state.type == NoteType.CHECKLIST && state.checklistItems.any { it.isChecked }) {
+                        IconButton(onClick = { showEditorMenu = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                        }
+                        DropdownMenu(
+                            expanded = showEditorMenu,
+                            onDismissRequest = { showEditorMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Uncheck all") },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.CheckBoxOutlineBlank, contentDescription = null)
+                                },
+                                onClick = {
+                                    showEditorMenu = false
+                                    viewModel.onUncheckAll()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete checked") },
+                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                                onClick = {
+                                    showEditorMenu = false
+                                    viewModel.onDeleteChecked()
+                                },
+                            )
+                        }
                     }
                 },
             )
@@ -636,16 +710,41 @@ fun NoteEditScreen(
                         if (checkedItems.isNotEmpty()) {
                             item {
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                                Text(
-                                    text = "${checkedItems.size} checked " +
-                                        if (checkedItems.size == 1) "item" else "items",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
-                                )
+                                // The header is the fold control. A long grocery list ends up
+                                // mostly checked, and that dead weight otherwise sits between you
+                                // and the items you still need.
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(MaterialTheme.shapes.small)
+                                        .clickable { checkedExpanded = !checkedExpanded }
+                                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = if (checkedExpanded) {
+                                            Icons.Filled.ExpandLess
+                                        } else {
+                                            Icons.Filled.ExpandMore
+                                        },
+                                        contentDescription = if (checkedExpanded) {
+                                            "Hide checked items"
+                                        } else {
+                                            "Show checked items"
+                                        },
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        text = "${checkedItems.size} checked " +
+                                            if (checkedItems.size == 1) "item" else "items",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(start = 8.dp),
+                                    )
+                                }
                             }
                             itemsIndexed(
-                                checkedItems,
+                                if (checkedExpanded) checkedItems else emptyList(),
                                 key = { _, indexed -> indexed.value.tempId },
                             ) { _, indexed ->
                                 val actualIndex = indexed.index
@@ -662,6 +761,10 @@ fun NoteEditScreen(
                                     focusRequester = focusRequesters.getOrNull(actualIndex) ?: FocusRequester(),
                                     indentLevel = indexed.value.indentLevel,
                                     iconStyle = state.iconStyle,
+                                    // Checked items arrive here from the section above; without
+                                    // this they teleport. Safe on this half — these rows are not
+                                    // drag targets, so there is no gesture for it to fight.
+                                    modifier = Modifier.animateItem(),
                                 )
                             }
                         }

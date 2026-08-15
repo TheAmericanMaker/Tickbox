@@ -77,6 +77,57 @@ back for that to work. Neither half has run.
 
       **Ran 2026-08-15 on a moto g stylus (2025), Android 16:** ids unchanged across ~15 autosaves,
       neighbouring items untouched, positions stable, text complete, nothing in logcat.
+- [x] Type **continuously** for 30 seconds in one item, then stop. Nothing is lost, and ids hold.
+
+      **Ran 2026-08-15 on a Galaxy Z Fold 5:** 399 characters typed over 30 s. All 405 characters
+      persisted once typing stopped, and ids were unchanged (`9, 10, 11`) — the reconciliation holds
+      under sustained editing.
+
+      Found and fixed in the same pass — [#17](https://github.com/TheAmericanMaker/Tickbox/issues/17):
+      **nothing at all reached the database during those 30 seconds.** `scheduleAutoSave` cancelled
+      the pending job on every keystroke, so a fast typist never reached the 2 s delay and the
+      unsaved window was unbounded. **Inherited** — Smart Toolkit cancels and relaunches the same
+      way.
+
+      The wait is now also capped at 10 s from the first unsaved edit. **Verified:** after 14 s of
+      continuous typing, reading the database immediately — before the 2 s debounce could have
+      fired — showed the item grown from 179 to 313 characters. Before the fix that read returned
+      the original 179. Reading "immediately" is the whole test; leave it longer than 2 s and the
+      debounce fires and tells you nothing.
+- [x] Add items by pressing **Enter** repeatedly until the list is longer than the visible area.
+      Each new row should take the caret.
+
+      **Found and fixed 2026-08-15 —
+      [#16](https://github.com/TheAmericanMaker/Tickbox/issues/16).** Enter created the row
+      correctly (the database showed 7
+      rows while the screen showed 3), but if the new row is below the fold it is never composed,
+      `requestFocus()` fails, and `NoteEditScreen`'s collector swallows it:
+
+      ```kotlin
+      // The row has to exist and be composed before it can take focus.
+      delay(100)
+      if (index in focusRequesters.indices) {
+          runCatching { focusRequesters[index].requestFocus() }
+      }
+      ```
+
+      The comment names the precondition; `delay(100)` cannot satisfy it, because nothing scrolls
+      the new row into view. The caret silently stays put and every further keystroke appends to the
+      **previous** item — `Charlie` became `CharlieDeltaEcho`. Confirmed both ways: adding a row at
+      the top of the list, where it is on screen, focuses correctly.
+
+      It bit at item 4 on a Fold 5 cover display; on a normal phone expect roughly item 7. That is
+      well inside the length of an ordinary shopping list, which is what the app is for.
+
+      **Inherited** — Smart Toolkit's `NoteEditScreen.kt:167` is the same code, and its only
+      `animateScrollToItem` is the scroll-to-top affordance.
+
+      Fixed by scrolling the row into view before requesting focus. Unchecked rows are one lazy item
+      each in list order, so the mapping is "count the unchecked items ahead of it"; the scroll only
+      runs when the row is genuinely off screen, since `scrollToItem` parks it at the top of the
+      viewport and that would lurch for a row already visible. **Verified:** the same
+      Alpha/Bravo/Charlie/Delta/Echo sequence now produces five separate rows, on a note whose
+      attached image makes the fold tighter still.
 - [x] Switch a checklist to a text note and back. Item text survives the round trip (checked state
       and indentation are expected to be dropped — that conversion is lossy by design).
 
@@ -160,6 +211,70 @@ back for that to work. Neither half has run.
       the drop would be silent. All three constants agree at 5 — editor, attachment row, and the
       import path.*
 - [ ] Tap an image — full-screen viewer opens, pinch-zoom and pan work.
+- [x] Attached photos appear **the right way up**, from both the camera and the gallery, whichever
+      way the phone was held.
+
+      **Failed then fixed 2026-08-15 —
+      [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14).** Every camera photo was stored
+      rotated: shot normally it landed on its side, shot with the phone sideways it landed
+      upside-down. `saveFromUri` decoded with `BitmapFactory` (which ignores EXIF `Orientation`) and
+      re-encoded with `compress` (which writes none), so the rotation was baked into the pixels and
+      the tag that would have corrected it destroyed. Confirmed on the pulled files: three camera
+      photos all stored 2000×1500 landscape with **no EXIF**; the only image that read correctly was
+      a screenshot, which never depended on a tag.
+
+      **Inherited**, but it was not therefore non-blocking — Smart Toolkit used ML Kit, which takes
+      a rotation hint and tolerated it. Tesseract does not, so this broke section J outright.
+
+      Fixed by reading the tag before decoding and baking the rotation into the pixels. **Verified
+      with a crafted fixture:** an 800×400 landscape JPEG tagged `Orientation=6` now stores as
+      **400×800 portrait** with the marker band on the right edge — matching exactly what the system
+      photo picker renders. All eight orientations are handled in code, mirrors included, but only
+      `6` has been driven end-to-end through the device.
+
+      **Confirmed again 2026-08-15 on real camera photos**, which is the stronger evidence: a photo
+      taken with the phone upright now stores **1500×2000 portrait**. The sensor produces 2000×1500
+      landscape natively, so a portrait file can only mean the rotation was applied — before the fix
+      every camera photo stored 2000×1500 regardless of how it was taken. The owner confirms they
+      display the right way up.
+
+      To re-test: generate fixtures with PIL (`exif[274] = orientation`), `adb push` them to
+      `/sdcard/Pictures/`, broadcast `MEDIA_SCANNER_SCAN_FILE` so the picker sees them, attach, then
+      pull from `files/note_images` and compare dimensions. The stored size flipping from landscape
+      to portrait is the assertion — it needs no eyes.
+
+      **Images attached before this fix are not recoverable.** The rotation is baked in the wrong
+      way and there is no tag left to correct from; they need re-attaching.
+- [x] Take a photo **with the phone in a different orientation than the editor**, and confirm it
+      attaches. *Failed 2026-08-15 —
+      [#15](https://github.com/TheAmericanMaker/Tickbox/issues/15): the photo was silently
+      discarded. `cameraImageUri` was plain `remember`, so the rotation recreated the activity and
+      the pending uri was gone by the time the camera returned. No snackbar, and the temp file
+      leaked too.*
+
+      *Fixed with `rememberSaveable` for both, plus a message when the capture succeeds but its
+      destination was lost.*
+
+      **Verified 2026-08-15:** rotating the device with the camera open now attaches the photo. The
+      image count went 2 → 3, and the new file carries the rotation correctly.
+
+      The leaked temp files are fixed too, and the old ones are the proof. `cache/camera_temp` still
+      held **three** orphans from the original failing session — and each is a full 4000×3000 JPEG
+      carrying **`EXIF Orientation = 3`**, the 180° case. They are the photos that "vanished": the
+      capture succeeded, the uri was lost across the recreation, and the cleanup handle went with
+      it. Their orientation tag is also the independent confirmation of
+      [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14) — the camera really was writing a
+      rotation the app then ignored. Captures after the fix leave nothing behind.
+
+      Two things worth knowing:
+
+      - **A failed capture is recoverable while it lasts.** The full-resolution original sits in
+        `cache/camera_temp` until Android reclaims the cache:
+        `adb exec-out run-as com.theamericanmaker.tickbox.debug cat cache/camera_temp/<name> > out.jpg`
+      - **Nothing sweeps `camera_temp`.** Orphans only accumulate when a capture fails, and the
+        system clears `cacheDir` under pressure, so this is a wart rather than a leak — but a
+        startup sweep of files older than a day would cost little, mirroring what `note_images`
+        already does.
 - [ ] The OCR badge shows on thumbnails and the viewer has an "Extract text" button — both
       appeared automatically when the Tesseract engine landed (they were gated on one existing).
       Full OCR checks live in section J.
@@ -219,6 +334,25 @@ All of section F was verified 2026-08-15 over adb — `input swipe` / `input tap
   activity name. Confirm with `mInputShown` from `dumpsys input_method`, or just screenshot again.
 - **Deleting a card shifts everything below it.** Swiping the same coordinate twice hits a different
   note the second time, or none. Delete the *lower* card first and the upper one keeps its position.
+- **Drive by accessibility node, not by pixel.** `adb shell uiautomator dump` gives exact bounds for
+  every control, and Compose populates it well — the drag handle appears as `Reorder`, rows as
+  `EditText`, the trash icons as `Delete item`. Coordinates read off a screenshot go stale the
+  instant the keyboard opens or a row is added; a tap computed before the IME appeared landed in the
+  title field and quietly concatenated five words into it. Re-dump before every gesture.
+- **`uiautomator` only reports what is on screen.** With the keyboard up, a checklist showed three
+  rows while the database held seven. Do not conclude "the row was not created" from the dump —
+  check the database.
+- **One BACK too many leaves the app entirely.** From the list screen, BACK pops Tickbox off its
+  task and reveals whatever task was behind it, which after enabling USB debugging is Settings. If
+  gestures suddenly appear to do nothing, check the foreground package before assuming a bug.
+
+On a **foldable**, two more:
+
+- `screencap` warns `Multiple displays were found` and picks one arbitrarily, so it may capture the
+  screen you are not using — and the warning text prefixes the PNG bytes, corrupting a naive
+  redirect. Pass `-d`, and get the ids from `dumpsys SurfaceFlinger --display-id`.
+- The *logical* display id is what `input` needs, and it is not the same number. `dumpsys display`
+  maps them: while folded, the cover screen is logical display 0, so `input` needs no `--display`.
 
 For the empty states, swapping the database is far safer than deleting notes through the UI:
 force-stop, `cat` a prepared database over `databases/tickbox.db`, delete the `-wal` and `-shm`, and
@@ -255,18 +389,50 @@ older than the 24h guard is swept on that launch.
       The **tint** half of this box is still unverified: no note in the test library has a colour
       label set.
 
+**Polish pass 1 (`6a8f6c6`), verified 2026-08-15 on a Galaxy Z Fold 5:**
+
+- [x] The **+ button opens a menu** ("New checklist" / "New note") instead of creating whichever
+      type matched the active filter chip. *Passed — both entries present and each creates the
+      type it names.*
+- [x] Checklist cards show **progress**, not the word "Checklist". *Passed — a list of 5 with one
+      item checked read "1 of 5 done" with a progress bar. This is backed by a grouped count query
+      combined with the notes flow, so it exercises two live sources rather than one.*
+- [x] Recent notes show **"Today" / "Yesterday"** rather than a calendar date. *Passed — the card
+      read "Today". Note `formatNoteDate` uses `java.time`, which is fine at `minSdk 26` without
+      desugaring.*
+- [ ] "All N done" appears when a checklist is fully checked. *Not yet exercised — the test list
+      always had unchecked items.*
+- [ ] List rows animate placement on pin, delete and undo (`Modifier.animateItem`). *Not
+      verifiable over adb; needs eyes.*
+
 ---
 
 ## G. Dictation
 
+**Reported working 2026-08-15** by the owner on a Galaxy Z Fold 5, as a whole flow. The boxes below
+record which parts that statement actually settles and which are still individually unexercised —
+"dictation is fine" covers the happy path, not the edge cases it was written to catch.
+
 - [ ] First use shows the voice-input disclosure dialog. Cancel dismisses it without recording.
-- [ ] Accept it — dictation runs, and the dialog does not reappear next time.
-- [ ] **No microphone permission prompt appears at any point.** `RECORD_AUDIO` was removed
+      *The cancel branch specifically is unexercised.*
+- [x] Accept it — dictation runs, and the dialog does not reappear next time. *Dictation ran.*
+- [x] **No microphone permission prompt appears at any point.** `RECORD_AUDIO` was removed
       deliberately: `RecognizerIntent` runs in the system recogniser's process, which holds the
       permission. If a prompt or a crash appears here, that removal was wrong.
+
+      *Confirmed 2026-08-15, and this one is provable rather than observed: `RECORD_AUDIO` appears
+      neither in `AndroidManifest.xml` nor in the built APK, so Android cannot raise a runtime
+      prompt for it at all. Dictation working regardless is what validates the removal.*
+
+      ```bash
+      aapt2 dump permissions app/build/outputs/apk/debug/app-debug.apk
+      ```
 - [ ] Dictate into a text note with the caret mid-text — the text inserts at the caret, not the end.
+      *Not separately exercised; needs the caret deliberately placed mid-text.*
 - [ ] Dictate into a checklist — it splits into separate items.
+      *Not separately exercised.*
 - [ ] On a device with no recogniser, it shows a message rather than crashing.
+      *Hard to test on hardware that has one; needs an emulator image without it.*
 
 ---
 
@@ -295,8 +461,34 @@ older than the 24h guard is swept on that launch.
 
 ## I. Release build
 
-- [ ] `./gradlew assembleRelease` succeeds. It is minified with `isShrinkResources = true` and
-      currently **unsigned** — signing arrives in Phase 10.
+- [x] `./gradlew assembleRelease` succeeds. It is minified with `isShrinkResources = true`, and
+      signed only when a keystore is configured.
+      *Ran 2026-08-15 locally: succeeds in 47 s. With no `keystore.properties` present it produced
+      `app-release-unsigned.apk` rather than failing, which is the intended F-Droid/contributor
+      fallback. **31 MB** release, **47 MB** debug — Tesseract contributes ~30 MB of native libs
+      across four ABIs plus a 4 MB model, and R8 does not shrink native code. `x86`/`x86_64` are
+      emulator-only for a phone app; an ABI split would roughly halve the download.*
+- [x] **No device needed.** Check that R8 kept the Tesseract JNI surface. Native code looks these
+      classes up by name, so a rename breaks OCR in release only:
+
+      ```bash
+      for c in com/googlecode/tesseract/android/TessBaseAPI com/googlecode/leptonica/android/Pix com/googlecode/leptonica/android/ReadFile; do printf "%-52s %s\n" "$c" "$(unzip -p app/build/outputs/apk/release/app-release-unsigned.apk classes.dex | grep -qa "L$c;" && echo PRESENT || echo MISSING)"; done
+      ```
+
+      *Ran 2026-08-15: all three present — the `-keep` rules in `proguard-rules.pro` hold. This is
+      necessary but not sufficient; only an actual extraction on the minified build proves the JNI
+      wiring, which is the last box in this section.*
+- [x] **No device needed.** Confirm the privacy claim against the built artifact, not the source:
+
+      ```bash
+      aapt2 dump permissions app/build/outputs/apk/release/app-release-unsigned.apk
+      ```
+
+      *Ran 2026-08-15: the merged release manifest declares only `android.permission.CAMERA` (plus
+      the framework's own dynamic-receiver permission). **No `INTERNET`** — Tesseract and its
+      transitive dependencies added none, so `PRIVACY_POLICY.md`'s headline claim survives the
+      dependency. Worth re-running whenever a dependency is added, since a library can introduce a
+      permission through manifest merge without any source change.*
 - [x] **No device needed for this one.** Check that R8 left the persisted enum names alone — every
       one of these should print `ok`:
 
@@ -343,8 +535,27 @@ Wired 2026-08-15 (tesseract4android 4.9.0 + bundled `tessdata_fast/eng`). Compil
 is to *drop OCR from 1.0* if results embarrass the app, and the upgrade path is the standard
 `tessdata` model (~15 MB instead of ~4 MB).
 
+> **Unblocked 2026-08-15 — re-run this section from scratch on freshly taken photos.** The first
+> attempt was invalidated by [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14): every
+> camera photo was stored rotated, so the boxes were measuring that bug rather than OCR quality.
+> #14 is fixed and verified, but **photos attached before the fix are still wrong and cannot be
+> corrected** — retake them rather than re-extracting from the ones already on the note.
+>
+> What the first attempt established, which is the useful half and still stands:
+>
+> - On an **upright** image, `tessdata_fast` is **good** — a screenshot of dense UI text came back
+>   near-perfect, including layout and punctuation. That is the one data point taken on an image
+>   that never depended on an orientation tag, and it is encouraging for the keep/upgrade decision.
+> - On a **90°** image, output degrades badly.
+> - On a **180°** image, output is unusable and unmistakably inverted — a company name and street
+>   address returned character-reversed and bottom-up.
+>
+> So the engine is probably fine and the pipeline feeding it is not. Re-run the whole section on
+> corrected images before filling in the verdict box.
+
 - [ ] Attach a photo of a **flat printed page** (book, letter). Extract. Expect near-perfect text.
 - [ ] A **shopping receipt** (narrow columns, small type).
+      *Attempted 2026-08-15 — stored on its side, output garbage. Blocked on #14.*
 - [ ] A **product label** (curved surface).
 - [ ] A **handwritten list** — expect this to be poor; Tesseract does not do handwriting. Confirm
       it fails politely (garbage text or "No text found", never a crash).
@@ -370,20 +581,41 @@ is to *drop OCR from 1.0* if results embarrass the app, and the upgrade path is 
 
 Implemented 2026-08-15, key-based. The state-machine move is unit-tested; the gesture is not.
 
-- [ ] Long-press the handle and drag an item one position. It lands exactly where dropped, and
+**Verified 2026-08-15 on a Galaxy Z Fold 5 (Android 14, cover display), debug build.** Every box
+below was checked against the database rather than the screen — a correct reorder and a
+delete-and-reinsert look identical in the UI, and only the row ids tell them apart.
+
+- [x] Long-press the handle and drag an item one position. It lands exactly where dropped, and
       **stays** after backing out and reopening (positions are rewritten on save).
-- [ ] Drag the top unchecked item to the bottom of the unchecked section, and bottom to top.
-- [ ] With **checked items present**, drag an unchecked item downward past the "Add item" row —
+      *Passed. `positions` rewritten to match list order, and every row kept its id.*
+- [x] Drag the top unchecked item to the bottom of the unchecked section, and bottom to top.
+      *Passed both directions, ids preserved.*
+- [x] With **checked items present**, drag an unchecked item downward past the "Add item" row —
       it must not enter the checked section, and nothing should crash or teleport.
-- [ ] Drag with a **blank item** in the middle of the list. The blank row moves like any other.
-- [ ] Drag an **indented** item — indentation travels with it.
-- [ ] Reorder, then press back within 2 seconds. The new order persists (the mid-save id
+      *Passed, and this is the box that actually proves the key-based design.* With one item
+      checked, display order was `Bravo, Alpha, Foxtrot, (blank), Charlie` while list order was
+      still `Bravo, Alpha, Charlie, Foxtrot, (blank)` — Charlie displays last but is list index 2.
+      Dragging **display** row 2 moved Foxtrot, the row actually grabbed. An index-based
+      implementation would have moved Charlie. This is the bug that kept the feature out of the
+      original app, and it does not occur here.
+- [x] Drag with a **blank item** in the middle of the list. The blank row moves like any other.
+      *Passed — the blank participated in every drag above without special-casing.*
+- [x] Drag an **indented** item — indentation travels with it.
+      *Passed — `indentLevel=1` survived the move.*
+- [x] Reorder, then press back within 2 seconds. The new order persists (the mid-save id
       write-back guard is exactly this scenario).
-- [ ] Reorder while the numbered labels are visible — numbering re-flows to match the new order.
+      *Passed — backed out at +0s, inside the 2s debounce. Order persisted, no id churn.*
+- [x] Reorder while the numbered labels are visible — numbering re-flows to match the new order.
+      *Passed — renumbered 1, 2, 3 with the indented row correctly unnumbered.*
 - [ ] The row visibly lifts (highlight) while dragged, and drops cleanly.
-- [ ] TalkBack: the handle announces "Reorder" and is now a real, functioning control. (Gesture
+      *Not verifiable over adb: `input swipe` gives no window to capture mid-gesture. Needs eyes.*
+- [~] TalkBack: the handle announces "Reorder" and is now a real, functioning control. (Gesture
       alternatives for accessibility are a known gap — note what TalkBack offers, if anything.)
-- [ ] Checked items have **no** drag handle.
+      *Half done: the handle carries `contentDescription = "Reorder"`, confirmed in the
+      accessibility tree, so TalkBack has something to announce. Whether it can actually **perform**
+      a reorder is untested and needs a human with TalkBack on.*
+- [x] Checked items have **no** drag handle.
+      *Passed — 5 rows, 4 handles, and the checked row had none.*
 
 ---
 
