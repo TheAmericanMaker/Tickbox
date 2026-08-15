@@ -290,9 +290,20 @@ older than the 24h guard is swept on that launch.
 
 - [ ] Cold launch in dark mode — **no white flash** before the UI paints (this is what
       `values-night/themes.xml` is for).
-- [ ] Toggle system dark mode with the app open — the theme follows.
-- [ ] On Android 12+, colours follow the system wallpaper (Material You).
-- [ ] Rotate the device mid-edit — text, caret and checklist state survive.
+- [x] Toggle system dark mode with the app open — the theme follows. *Passed 2026-08-15, driven
+      with `adb shell cmd uimode night no|yes` while the app was foregrounded. Both variants are
+      coherent; no stranded colours.*
+- [x] On Android 12+, colours follow the system wallpaper (Material You). *Passed — the light and
+      dark variants are the same wallpaper-derived family, not the stock purple baseline.*
+- [x] Rotate the device mid-edit — text, caret and checklist state survive. *Passed 2026-08-15 in
+      the checklist editor: title, all four images, colour and style pickers and every item came
+      through, and the item ids were unchanged afterwards, so the rotation did not trigger a
+      churning re-save. Landscape also reveals both Gallery and Camera tiles, which are clipped in
+      portrait.*
+
+      Drive it with `settings put system accelerometer_rotation 0` then
+      `settings put system user_rotation 1`, and put both back afterwards. **Caret position is
+      still unverified** — no field was focused for this run.
 - [ ] The launcher icon renders correctly, including themed/monochrome mode on Android 13+.
       It is currently **placeholder art** and needs replacing before release.
 
