@@ -34,8 +34,25 @@ device checklist covering what the compiler cannot see.
 ./gradlew assembleRelease      # minified; UNSIGNED (no signing config yet — Phase 10)
 ```
 
-Requires **JDK 17** and **Android SDK Platform 35**. The Gradle toolchain resolver will fetch a
-JDK if the one on PATH is wrong.
+Requires **JDK 17** and **Android SDK Platform 35**.
+
+**Kotlin 2.1.0 cannot run on Java 25**, and it says so in a way that gives nothing away:
+
+```
+* What went wrong:
+25.0.4
+```
+
+That is Kotlin's bundled IntelliJ `JavaVersion.parse` refusing a version string it predates. It is
+not AGP and it is not Gradle — Gradle 8.13 runs on Java 25 quite happily, which is what makes the
+error so confusing. Note that `jvmToolchain(17)` and the foojay resolver do **not** rescue you:
+they provision a JDK for *compilation*, while the JVM running the Gradle daemon is the one that
+has to be old enough.
+
+Current distros are dropping older JDKs — Fedora 44 packages nothing below 25 — so you may need a
+JDK 17 from Adoptium. Keep it out of the repo: `JAVA_HOME` per shell, or `org.gradle.java.home` in
+`~/.gradle/gradle.properties`, never the committed `gradle.properties`. Bumping Kotlin is the real
+fix, but it drags `ksp` along in lockstep and deserves its own reviewed change.
 
 Debug builds carry `applicationIdSuffix = ".debug"`, so a debug Tickbox installs alongside a
 release one — and alongside Smart Toolkit, which is a different package entirely. That is
