@@ -99,7 +99,7 @@ back for that to work. Neither half has run.
 
       **Ran 2026-08-15 on a moto g stylus (2025), Android 16:** ids unchanged across ~15 autosaves,
       neighbouring items untouched, positions stable, text complete, nothing in logcat.
-- [ ] Switch a checklist to a text note and back. Item text survives the round trip (checked state
+- [x] Switch a checklist to a text note and back. Item text survives the round trip (checked state
       and indentation are expected to be dropped — that conversion is lossy by design).
 
       Check that the item text is **visible in the body immediately**, not merely stored. Those are
@@ -159,8 +159,27 @@ back for that to work. Neither half has run.
       `adb shell run-as com.theamericanmaker.tickbox.debug ls files/note_images`
 - [ ] Delete a note that has images. Wait past the 5s undo window. The files are gone from
       `note_images/`. **This is the orphan cleanup working.**
-- [ ] Then relaunch the app and confirm the startup sweep did **not** delete anything still in use.
-      It skips files under 24h old, so also check against an older library if you can.
+- [x] Then relaunch the app and confirm the startup sweep did **not** delete anything still in use.
+
+      A fresh library cannot test this at all. Every file in it is minutes old, the sweep skips
+      anything under 24h, and so it correctly does nothing — which is indistinguishable from a
+      sweep that is broken. Waiting for an older library is not much better, because by then it is
+      running against data you care about. Backdate probe files instead:
+
+      ```bash
+      P=com.theamericanmaker.tickbox.debug
+      adb shell "run-as $P sh -c 'cd files/note_images && echo x > orphan-old.jpg && echo x > orphan-fresh.jpg && touch -t 202601010900 orphan-old.jpg && touch -t 202601010900 <a-real-referenced-image>.jpg'"
+      adb shell am force-stop $P && adb shell am start -n $P/com.theamericanmaker.tickbox.MainActivity
+      ```
+
+      Three outcomes, one per branch: `orphan-old.jpg` **deleted**, `orphan-fresh.jpg` **kept**
+      (the 24h guard), and the backdated real image **kept** — that last one proving the database
+      decides what is referenced, not the file's age. Back the real images up first with
+      `adb exec-out run-as $P cat files/note_images/<name>` in case the sweep gets it wrong, and
+      remove the leftover probe afterwards.
+
+      **Ran 2026-08-15, first ever execution: all three correct.** No rows left pointing at missing
+      files, nothing in logcat.
 
 ---
 
