@@ -14,6 +14,8 @@ import com.theamericanmaker.tickbox.data.ChecklistProgress
 import com.theamericanmaker.tickbox.data.NoteEntity
 import com.theamericanmaker.tickbox.data.NoteImageStore
 import com.theamericanmaker.tickbox.data.NoteRepository
+import com.theamericanmaker.tickbox.data.ThemeMode
+import com.theamericanmaker.tickbox.data.UserPreferencesRepository
 import com.theamericanmaker.tickbox.data.backup.NoteBackupManager
 import com.theamericanmaker.tickbox.data.model.NoteType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,7 +48,22 @@ class NoteListViewModel(
     private val repository: NoteRepository,
     private val backupManager: NoteBackupManager,
     private val imageStore: NoteImageStore,
+    private val preferences: UserPreferencesRepository,
 ) : ViewModel() {
+
+    /**
+     * The stored appearance preference.
+     *
+     * `MainActivity` has always read this and applied it; until now nothing could write it, so
+     * the setting existed and was unreachable. Kept out of [NoteListUiState] deliberately — it is
+     * not list state, it outlives this screen, and the activity is its real consumer.
+     */
+    val themeMode: StateFlow<ThemeMode> = preferences.themeMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ThemeMode.SYSTEM)
+
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { preferences.setThemeMode(mode) }
+    }
 
     private val searchQuery = MutableStateFlow("")
     private val filterType = MutableStateFlow<NoteType?>(null)
@@ -157,6 +174,7 @@ class NoteListViewModel(
                     repository = container.noteRepository,
                     backupManager = container.backupManager,
                     imageStore = container.imageStore,
+                    preferences = container.preferences,
                 )
             }
         }

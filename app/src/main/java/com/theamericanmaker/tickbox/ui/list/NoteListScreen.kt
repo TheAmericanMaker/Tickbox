@@ -22,22 +22,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -45,6 +52,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -53,6 +61,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -68,12 +77,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.theamericanmaker.tickbox.data.ChecklistProgress
 import com.theamericanmaker.tickbox.data.NoteEntity
+import com.theamericanmaker.tickbox.data.ThemeMode
 import com.theamericanmaker.tickbox.data.model.NoteType
 import com.theamericanmaker.tickbox.ui.NotesTopBar
 import com.theamericanmaker.tickbox.ui.edit.NoteCategorizer
@@ -92,6 +103,7 @@ fun NoteListScreen(
     viewModel: NoteListViewModel = viewModel(factory = NoteListViewModel.Factory),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -121,6 +133,7 @@ fun NoteListScreen(
 
     NoteListContent(
         uiState = uiState,
+        themeMode = themeMode,
         snackbarHostState = snackbarHostState,
         onSearchQueryChange = viewModel::onSearchQueryChange,
         onFilterTypeChange = viewModel::onFilterTypeChange,
@@ -131,6 +144,7 @@ fun NoteListScreen(
         onNewChecklist = onNewChecklist,
         onExport = { exportLauncher.launch(BACKUP_FILE_NAME) },
         onImport = { importLauncher.launch(arrayOf("application/zip")) },
+        onThemeModeChange = viewModel::setThemeMode,
     )
 }
 
@@ -143,6 +157,7 @@ fun NoteListScreen(
 @Composable
 fun NoteListContent(
     uiState: NoteListUiState,
+    themeMode: ThemeMode,
     snackbarHostState: SnackbarHostState,
     onSearchQueryChange: (String) -> Unit,
     onFilterTypeChange: (NoteType?) -> Unit,
@@ -153,11 +168,21 @@ fun NoteListContent(
     onNewChecklist: () -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     var showSearch by rememberSaveable { mutableStateOf(false) }
     var searchText by rememberSaveable { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
     var showFabMenu by remember { mutableStateOf(false) }
+    var showAppearanceDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showAppearanceDialog) {
+        AppearanceDialog(
+            selected = themeMode,
+            onSelect = onThemeModeChange,
+            onDismiss = { showAppearanceDialog = false },
+        )
+    }
     val bottomScrollBuffer = (LocalConfiguration.current.screenHeightDp * 0.35f).dp
 
     Scaffold(
@@ -180,6 +205,33 @@ fun NoteListContent(
                         Icon(Icons.Filled.MoreVert, contentDescription = "More options")
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Appearance") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = when (themeMode) {
+                                        ThemeMode.LIGHT -> Icons.Filled.LightMode
+                                        ThemeMode.DARK -> Icons.Filled.DarkMode
+                                        ThemeMode.SYSTEM -> Icons.Filled.BrightnessAuto
+                                    },
+                                    contentDescription = null,
+                                )
+                            },
+                            // The current mode as trailing text, so the menu answers "what is it
+                            // set to" without anyone having to open the dialog to find out.
+                            trailingIcon = {
+                                Text(
+                                    text = themeMode.label(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            onClick = {
+                                showMenu = false
+                                showAppearanceDialog = true
+                            },
+                        )
+                        HorizontalDivider()
                         DropdownMenuItem(
                             text = { Text("Export notes") },
                             onClick = {
@@ -552,6 +604,77 @@ private fun NoteCard(
             },
         )
     }
+}
+
+private fun ThemeMode.label(): String = when (this) {
+    ThemeMode.SYSTEM -> "System"
+    ThemeMode.LIGHT -> "Light"
+    ThemeMode.DARK -> "Dark"
+}
+
+private fun ThemeMode.description(): String = when (this) {
+    ThemeMode.SYSTEM -> "Match the device setting"
+    ThemeMode.LIGHT -> "Always light"
+    ThemeMode.DARK -> "Always dark"
+}
+
+/**
+ * Light/dark/system choice.
+ *
+ * The preference has been stored and applied since the extraction; nothing ever wrote it, so the
+ * setting existed with no way to reach it. This is that way.
+ *
+ * Selection applies immediately rather than on confirm, and the dialog stays open: the whole
+ * subject of this dialog is what the app looks like, and you can watch it change behind the
+ * scrim. That makes "Done" a dismissal rather than a commit, so there is nothing to cancel.
+ */
+@Composable
+private fun AppearanceDialog(
+    selected: ThemeMode,
+    onSelect: (ThemeMode) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Appearance") },
+        text = {
+            // selectableGroup so TalkBack announces these as one set ("2 of 3") rather than
+            // three unrelated controls.
+            Column(modifier = Modifier.selectableGroup()) {
+                ThemeMode.entries.forEach { mode ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            // The whole row is the target, not just the 20dp radio.
+                            .selectable(
+                                selected = mode == selected,
+                                onClick = { onSelect(mode) },
+                                role = Role.RadioButton,
+                            )
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = mode == selected,
+                            // Null: the row above already handles the click and carries the
+                            // semantics. A handler here would announce the control twice.
+                            onClick = null,
+                        )
+                        Column(modifier = Modifier.padding(start = 12.dp)) {
+                            Text(mode.label(), style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                text = mode.description(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 /**
