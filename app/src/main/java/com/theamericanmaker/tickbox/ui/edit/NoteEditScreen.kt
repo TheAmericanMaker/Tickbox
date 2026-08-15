@@ -104,6 +104,9 @@ import java.io.File
 private const val DICTATION_TARGET_TITLE = "title"
 private const val DICTATION_TARGET_CONTENT = "content"
 
+/** One beat for a newly added row to compose and lay out before it is measured or focused. */
+private const val FOCUS_LAYOUT_SETTLE_MS = 100L
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NoteEditScreen(
@@ -177,9 +180,29 @@ fun NoteEditScreen(
 
     LaunchedEffect(Unit) {
         viewModel.focusItemIndex.collect { index ->
-            // The row has to exist and be composed before it can take focus.
-            delay(100)
+            // The row has to exist and be composed before it can take focus — and a row below the
+            // fold is not composed at all. Its FocusRequester is never attached, requestFocus()
+            // throws, and the caret silently stays put while everything the user types next lands
+            // in the *previous* item. Waiting longer cannot fix that; only scrolling can.
+            //
+            // Unchecked rows are one lazy item each, in list order, so a checklist index maps to a
+            // lazy index by counting the unchecked items ahead of it. New rows are always
+            // unchecked, which is the only case that reaches here.
+            delay(FOCUS_LAYOUT_SETTLE_MS)
+            val items = viewModel.uiState.value.checklistItems
+            if (items.getOrNull(index)?.isChecked == false) {
+                val lazyIndex = items.take(index).count { !it.isChecked }
+                // Only when it is genuinely off screen: scrollToItem puts the row at the top of
+                // the viewport, which would be a visible lurch for a row already in view.
+                val onScreen = lazyListState.layoutInfo.visibleItemsInfo.any { it.index == lazyIndex }
+                if (!onScreen) {
+                    runCatching { lazyListState.scrollToItem(lazyIndex) }
+                    delay(FOCUS_LAYOUT_SETTLE_MS)
+                }
+            }
             if (index in focusRequesters.indices) {
+                // Still guarded: the row can be deleted between the emit and here. What this no
+                // longer hides is the routine off-screen case, which the scroll above handles.
                 runCatching { focusRequesters[index].requestFocus() }
             }
         }
@@ -189,27 +212,39 @@ fun NoteEditScreen(
         contract = ActivityResultContracts.PickVisualMedia(),
     ) { uri: Uri? -> uri?.let { viewModel.addImageFromUri(it) } }
 
-    var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
-    var cameraTempFile by remember { mutableStateOf<File?>(null) }
+    // rememberSaveable, not remember: the camera is a separate activity, and rotating or folding
+    // the device while it is open recreates this one. Plain remember loses the pending uri, and
+    // the result callback then reads null and discards a photo the user watched themselves take.
+    // The path travels as a String because File is not one of the types the saver handles.
+    var cameraImageUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var cameraTempPath by rememberSaveable { mutableStateOf<String?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture(),
     ) { success ->
-        val tempFile = cameraTempFile
-        cameraTempFile = null
-        val captured = cameraImageUri.takeIf { success }
-        if (captured != null) {
-            // The copy runs on a coroutine, so deleting the temp file here would race it —
-            // and win. Cleanup waits until the copy has finished reading.
-            viewModel.addImageFromUri(captured) { tempFile?.delete() }
-        } else {
-            tempFile?.delete()
+        val tempFile = cameraTempPath?.let(::File)
+        val captured = cameraImageUri
+        cameraTempPath = null
+        cameraImageUri = null
+        when {
+            success && captured != null ->
+                // The copy runs on a coroutine, so deleting the temp file here would race it —
+                // and win. Cleanup waits until the copy has finished reading.
+                viewModel.addImageFromUri(captured) { tempFile?.delete() }
+            // The camera reported a picture but we no longer know where it went. Saying so beats
+            // the silence this used to produce, which was indistinguishable from a dead shutter.
+            success -> {
+                tempFile?.delete()
+                coroutineScope.launch { snackbarHostState.showSnackbar("That photo could not be attached. Try again.") }
+            }
+            // Cancelled: no picture was taken, so there is nothing to report.
+            else -> tempFile?.delete()
         }
     }
 
     val launchCameraInternal: () -> Unit = {
         val tempDir = File(context.cacheDir, "camera_temp").apply { mkdirs() }
         val tempFile = File(tempDir, "photo_${System.currentTimeMillis()}.jpg")
-        cameraTempFile = tempFile
+        cameraTempPath = tempFile.absolutePath
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
         cameraImageUri = uri
         cameraLauncher.launch(uri)
