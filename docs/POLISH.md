@@ -6,6 +6,14 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Done
 
+- **Readable checklist rows.** Item text wraps instead of scrolling, and indent and delete
+  appear only on the row being edited. The field used to be `singleLine`, which scrolls to
+  keep the caret in view — so long items displayed their *tail*, and a list read as
+  "todos completed" / "via run_bench.sh" with the start of every line off the left edge.
+  Text went from 39% of the row width to 57%.
+- **Warning before a lossy checklist→note conversion**, and only when there is something to
+  lose. Reported from real use: switching to note style to read a list, and losing the
+  ticks by doing it.
 - **Appearance setting.** Light / Dark / System, in the list screen's overflow above
   Export/Import. The preference was stored and applied from the start but nothing ever
   wrote it, so the setting existed with no way to reach it. Selection applies live with
@@ -32,9 +40,25 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Next up (ranked)
 
-1. **48dp touch targets** for indent/outdent (24dp today), item delete (32dp), and the drag
+1. **Decide what the item number is for.** After the row cleanup the remaining chrome on an
+   unfocused row is the drag handle, the number and the checkbox. The number costs 24dp on
+   every line — about 7% of the width on a Fold cover display — and on a shopping list it
+   earns nothing; the owner named it as part of the crowding. Three ways out, in rising
+   order of work:
+
+   - Drop it. Simplest, and wrong for anyone who wants an ordered list.
+   - Make it a sixth `ChecklistIconStyle` ("numbered"), reusing the picker that already
+     exists in the editor. Fits the current model, and adding an enum value is the safe
+     kind of backup-format change — every read is a tolerant `fromName(…) ?: CHECKBOX`.
+   - A separate per-note toggle. More faithful, more surface.
+
+   The middle option looks right, but it is a product decision rather than a layout one.
+2. **48dp touch targets** for indent/outdent (24dp today), item delete (32dp), and the drag
    handle (measured 17×28dp on a Fold cover display). Half-size targets are the single most
    felt roughness on a real device.
+
+   Cheaper than it was: indent and delete now only appear on the focused row, so sizing them
+   up costs width on one row at a time rather than on every line.
 
    Not a matter of removing the `.size()` overrides: `IconButton` already reserves 48dp
    until something shrinks it, so restoring the default would put handle + outdent + indent
@@ -43,33 +67,33 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
    nothing and width is the whole decision. It probably needs the indent controls to stop
    being permanently visible on every row, which is a design change rather than a sizing
    one. **Decide on a device with a real list.**
-2. **Completion micro-animation — half done.** `animateItem()` is on the checked rows, so an
+3. **Completion micro-animation — half done.** `animateItem()` is on the checked rows, so an
    item animates *into* the checked section instead of teleporting. The unchecked half is
    missing: those rows live inside `ReorderableItem`, where `animateItem` and the drag
    gesture both want to own placement. Doing it properly means finding the combination the
    reorderable library supports, and re-running section K afterwards — drag-to-reorder is
    verified working today and is not worth regressing for a flourish.
-3. **M3 top bar scroll behaviour.** `enterAlways` on the editor so the bar tucks away while
+4. **M3 top bar scroll behaviour.** `enterAlways` on the editor so the bar tucks away while
    a long checklist scrolls; consider `LargeTopAppBar` collapsing on the list.
-4. **Swipe-to-delete reveal.** Icon plus the word "Delete", revealed progressively with
+5. **Swipe-to-delete reveal.** Icon plus the word "Delete", revealed progressively with
    swipe fraction, instead of a full-red flash at first pixel.
-5. **M3 SearchBar.** Replace the OutlinedTextField with the proper search component:
+6. **M3 SearchBar.** Replace the OutlinedTextField with the proper search component:
    autofocus on open, a clear (×) button, keyboard search action.
-6. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
+7. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
    haptics in Smart Toolkit's other tools; notes never got them.
-7. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
+8. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
    actual identity pass; keep the monochrome layer for themed icons.
-8. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
+9. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
    beside the date instead of tinting the whole card — calmer list, label still legible.
    Decide on a device with real data; whole-card tint may win.
-9. **Label name inline in the colour picker.** Selecting a colour in the editor shows
+10. **Label name inline in the colour picker.** Selecting a colour in the editor shows
    only a check mark; echo the name ("Green") beside the row.
-10. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
+11. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
     with a dynamic theme; blend them toward the scheme's primary the way `ColorUtils`
     harmonisation does. Low urgency, high subtlety.
-11. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
+12. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
     the body/first item.
-12. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
+13. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
     lot of chrome; moving pickers behind a palette icon would calm the editor. Sketch
     first — it trades discoverability for calm.
 
