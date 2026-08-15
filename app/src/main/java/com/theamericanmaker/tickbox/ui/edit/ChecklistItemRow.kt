@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -49,6 +50,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.theamericanmaker.tickbox.data.model.ChecklistIconStyle
+
+/** Enough for a long shopping-list line to read in full; past this it scrolls. */
+private const val MAX_ITEM_LINES = 4
 
 @Composable
 fun ChecklistItemRow(
@@ -82,9 +86,14 @@ fun ChecklistItemRow(
         label = "checklistTextColor",
     )
 
+    var isFocused by remember { mutableStateOf(false) }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // hasFocus, not isFocused: it stays true while focus is anywhere inside the row, so a
+            // control revealed by focus does not disappear from under the tap that presses it.
+            .onFocusChanged { isFocused = it.hasFocus }
             .padding(start = (indentLevel * 24).dp)
             .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -100,7 +109,11 @@ fun ChecklistItemRow(
             )
         }
 
-        if (onOutdent != null && indentLevel > 0) {
+        // Indent controls belong to the row being edited, not to every row. Permanently visible
+        // they cost a fixed slice of every line for a feature capped at one level and rarely used,
+        // and the text is what people came to read. The indent itself stays visible as the row's
+        // start padding, so nothing about the structure is hidden — only the buttons that change it.
+        if (isFocused && onOutdent != null && indentLevel > 0) {
             IconButton(onClick = onOutdent, modifier = Modifier.size(24.dp)) {
                 Icon(
                     imageVector = Icons.Filled.FormatIndentDecrease,
@@ -110,7 +123,7 @@ fun ChecklistItemRow(
                 )
             }
         }
-        if (onIndent != null && indentLevel < 1) {
+        if (isFocused && onIndent != null && indentLevel < 1) {
             IconButton(onClick = onIndent, modifier = Modifier.size(24.dp)) {
                 Icon(
                     imageVector = Icons.Filled.FormatIndentIncrease,
@@ -146,6 +159,18 @@ fun ChecklistItemRow(
         BasicTextField(
             value = fieldValue,
             onValueChange = { newValue ->
+                // A wrapping field means the IME offers a newline rather than a Next action, so
+                // Enter arrives here as text. Intercept it: a newline inside a checklist item is
+                // never what was meant — the next item is.
+                if (newValue.text.contains('\n')) {
+                    val withoutBreak = newValue.text.replace("\n", "")
+                    if (withoutBreak != fieldValue.text) {
+                        fieldValue = TextFieldValue(withoutBreak, TextRange(withoutBreak.length))
+                        onTextChange(withoutBreak)
+                    }
+                    onEnterPressed()
+                    return@BasicTextField
+                }
                 val textChanged = newValue.text != fieldValue.text
                 fieldValue = newValue
                 if (textChanged) onTextChange(newValue.text)
@@ -165,10 +190,13 @@ fun ChecklistItemRow(
                 capitalization = KeyboardCapitalization.Sentences,
             ),
             keyboardActions = KeyboardActions(onNext = { onEnterPressed() }),
-            singleLine = true,
+            // Wraps instead of scrolling. A single-line field keeps the caret in view, so a long
+            // item showed its *tail* — a shopping list read as "...for both modes" and
+            // "...qualitative notes", with the start of every line off the left edge.
+            maxLines = MAX_ITEM_LINES,
         )
 
-        if (canDelete) {
+        if (canDelete && isFocused) {
             IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                 Icon(
                     imageVector = Icons.Filled.Close,
