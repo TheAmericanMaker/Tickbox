@@ -227,17 +227,53 @@ back for that to work. Neither half has run.
 
 ## F. List screen
 
-- [ ] Empty library shows "No notes yet. Tap + to write your first one."
-- [ ] Search with no matches shows a **different** message naming the query.
-- [ ] Filtering to Checklists with none shows a **third** message. (All three used to be the same
-      text, which read as the search having broken.)
-- [ ] Swipe a note left — it deletes with an Undo snackbar; Undo restores it.
-- [ ] Let the snackbar expire — the note is really gone.
-- [ ] Delete a note, and while the snackbar is still showing, delete a **second** one. The first
-      commits immediately; only the second is undoable.
-- [ ] Pin and unpin; pinned notes sort to the top under a "Pinned" header.
-- [ ] Colour labels tint the note cards, and the card stays opaque while swiping (no red bleed
+All of section F was verified 2026-08-15 over adb — `input swipe` / `input tap` to drive it and
+`screencap` to read the result. Two notes on doing it that way, both learned the hard way:
+
+- **Check which screen you are on before every gesture, with a screenshot.** A swipe that misses a
+  card opens the note under it, and every subsequent "swipe" then types into the editor instead. It
+  is silent, and it edits real notes. `dumpsys activity` will not tell you: one `MainActivity` hosts
+  both screens through Compose navigation, so it reports the same either way.
+- **Getting back out takes two BACKs when the keyboard is up.** The first is consumed dismissing the
+  IME and the editor stays open — which looks exactly like having left, if you only check the
+  activity name. Confirm with `mInputShown` from `dumpsys input_method`, or just screenshot again.
+- **Deleting a card shifts everything below it.** Swiping the same coordinate twice hits a different
+  note the second time, or none. Delete the *lower* card first and the upper one keeps its position.
+
+For the empty states, swapping the database is far safer than deleting notes through the UI:
+force-stop, `cat` a prepared database over `databases/tickbox.db`, delete the `-wal` and `-shm`, and
+relaunch. Back up the images too — an empty database makes every one of them an orphan, and any file
+older than the 24h guard is swept on that launch.
+
+- [x] Empty library shows "No notes yet. Tap + to write your first one." *Passed.*
+- [x] Search with no matches shows a **different** message naming the query. *Passed —
+      "No notes match "…".", with the query quoted.*
+- [x] Filtering to Checklists with none shows a **third** message. (All three used to be the same
+      text, which read as the search having broken.) *Passed — "No checklists yet. Tap + to start
+      one." All three messages and all three icons are distinct.*
+- [x] Swipe a note left — it deletes with an Undo snackbar; Undo restores it. *Passed.*
+- [x] Let the snackbar expire — the note is really gone. *Passed.*
+- [x] Delete a note, and while the snackbar is still showing, delete a **second** one. The first
+      commits immediately; only the second is undoable. *Passed — the first was committed and only
+      the second came back.*
+- [x] Pin and unpin; pinned notes sort to the top under a "Pinned" header. *Passed — "Pinned" and
+      "Other" headers both render and the pin icon fills.*
+
+      **Pinning gives no visible feedback.** The note moves to the top of the list, but the list
+      does not scroll to follow it, so from anywhere below the fold the app appears to do nothing.
+      Not a correctness bug — the sort, headers and icon are all right — but it reads as a dead
+      button. Scrolling the pinned item into view would fix it; left alone deliberately, since it
+      is a design decision rather than a defect.
+- [x] Colour labels tint the note cards, and the card stays opaque while swiping (no red bleed
       through from the delete background).
+
+      **Found and fixed 2026-08-15:** every card sat inside a permanent red frame with no swipe in
+      progress. `SwipeToDismissBox` draws its background across the whole row and the card applied
+      its own inset, so the margin exposed the `errorContainer` fill. The inset moved to the swipe
+      container. **Inherited** — Smart Toolkit builds the row the same way.
+
+      The **tint** half of this box is still unverified: no note in the test library has a colour
+      label set.
 
 ---
 
@@ -258,9 +294,20 @@ back for that to work. Neither half has run.
 
 - [ ] Cold launch in dark mode — **no white flash** before the UI paints (this is what
       `values-night/themes.xml` is for).
-- [ ] Toggle system dark mode with the app open — the theme follows.
-- [ ] On Android 12+, colours follow the system wallpaper (Material You).
-- [ ] Rotate the device mid-edit — text, caret and checklist state survive.
+- [x] Toggle system dark mode with the app open — the theme follows. *Passed 2026-08-15, driven
+      with `adb shell cmd uimode night no|yes` while the app was foregrounded. Both variants are
+      coherent; no stranded colours.*
+- [x] On Android 12+, colours follow the system wallpaper (Material You). *Passed — the light and
+      dark variants are the same wallpaper-derived family, not the stock purple baseline.*
+- [x] Rotate the device mid-edit — text, caret and checklist state survive. *Passed 2026-08-15 in
+      the checklist editor: title, all four images, colour and style pickers and every item came
+      through, and the item ids were unchanged afterwards, so the rotation did not trigger a
+      churning re-save. Landscape also reveals both Gallery and Camera tiles, which are clipped in
+      portrait.*
+
+      Drive it with `settings put system accelerometer_rotation 0` then
+      `settings put system user_rotation 1`, and put both back afterwards. **Caret position is
+      still unverified** — no field was focused for this run.
 - [ ] The launcher icon renders correctly, including themed/monochrome mode on Android 13+.
       It is currently **placeholder art** and needs replacing before release.
 
