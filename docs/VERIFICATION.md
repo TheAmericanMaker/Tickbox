@@ -2,9 +2,10 @@
 
 What CI cannot tell us. Everything here needs a device or emulator (API 26+).
 
-Nothing in this document has been run yet. The extraction was verified only to the extent that it
-compiles, lints, and packages. Treat every box below as genuinely unknown, and record what you find
-— a failure here is expected and useful, not a surprise.
+Nothing in this document has been run yet, apart from the one box in section I that is marked done
+— it needs no device. The extraction was verified only to the extent that it compiles, lints, and
+packages. Treat every other box below as genuinely unknown, and record what you find — a failure
+here is expected and useful, not a surprise.
 
 Suggested order: **A first** (it guards real data), then **B** (it is where the new code is), then
 the rest.
@@ -58,18 +59,62 @@ back for that to work. Neither half has run.
 - [ ] Create a checklist, add several items, back out, reopen — all items present, in order.
 - [ ] Reopen, edit **one** item's text, wait past the 2s autosave, back out, reopen — only that
       item changed.
-- [ ] Add an item in the middle, save, then edit a **different** item. The edit lands on the item
-      you meant, not a neighbour.
-- [ ] Delete an item, save, reopen — it stays deleted, and nothing else shifted.
-- [ ] Indent an item, save, reopen — indentation persisted.
-- [ ] Check an item; it moves into the "N checked items" section. Reopen — still checked, still
-      there.
+- [x] Add an item in the middle, save, then edit a **different** item. The edit lands on the item
+      you meant, not a neighbour. *Passed 2026-08-15: the new row took a fresh id and the item it
+      displaced kept its own, so the later edit landed on the row intended rather than the one now
+      occupying that position. This is the box that distinguishes mapping by identity from mapping
+      by index; the two are indistinguishable in the UI until text appears on the wrong line.*
+- [x] Delete an item, save, reopen — it stays deleted, and nothing else shifted. *Passed
+      2026-08-15: the row was gone, no orphaned `checklist_items` remained, and every surviving
+      item kept its id. First execution of the delete branch of the reconciliation.*
+- [x] Indent an item, save, reopen — indentation persisted. *Passed 2026-08-15.*
+- [x] Check an item; it moves into the "N checked items" section. Reopen — still checked, still
+      there. *Passed 2026-08-15 — checked state persisted.*
+
+      Measured while confirming it: **the checked item kept its stored `position`.** It moves
+      between sections visually without its underlying index changing, which is the display-order
+      / list-index divergence that makes drag-to-reorder a remodelling job rather than a wiring
+      one. That is no longer inference from reading the code — it is observed.
 - [ ] Uncheck it; it returns to the main list.
-- [ ] Type continuously for ~30 seconds in one item. Autosave fires repeatedly during this; when
-      you reopen, the text should be complete and the list unchanged. **If item identity is
-      breaking, this is where it shows.**
-- [ ] Switch a checklist to a text note and back. Item text survives the round trip (checked state
+- [x] Type in **bursts** in one item — a few words, pause ~3 seconds, repeat 10–15 times. When you
+      reopen, the text should be complete and the list unchanged. **If item identity is breaking,
+      this is where it shows.**
+
+      The pauses are the test. `scheduleAutoSave` debounces rather than throttles — every keystroke
+      cancels the pending job — so typing *continuously* fires autosave once, at the end, and
+      exercises nothing. Each pause past 2s buys one more save. Temporarily dropping
+      `AUTOSAVE_DELAY_MS` to ~200ms in a throwaway build gets the same coverage faster.
+
+      Do not judge this one by eye — read the ids off the device, before and after:
+
+      ```bash
+      adb exec-out run-as com.theamericanmaker.tickbox.debug cat databases/tickbox.db > /tmp/t.db
+      ```
+
+      Pull `tickbox.db-wal` and `-shm` alongside it or you will read a stale 4 KB file: the
+      database runs in WAL mode and the rows live in the WAL. Then
+      `SELECT id,noteId,position,text FROM checklist_items ORDER BY noteId,position`. Same ids
+      before and after means the reconciliation held; ids that have advanced mean it degraded to
+      delete-and-reinsert, which looks identical in the UI.
+
+      **Ran 2026-08-15 on a moto g stylus (2025), Android 16:** ids unchanged across ~15 autosaves,
+      neighbouring items untouched, positions stable, text complete, nothing in logcat.
+- [x] Switch a checklist to a text note and back. Item text survives the round trip (checked state
       and indentation are expected to be dropped — that conversion is lossy by design).
+
+      Check that the item text is **visible in the body immediately**, not merely stored. Those are
+      different things and only one of them is observable: `state.content` and the database can
+      both be correct while the editor shows the empty body it had as a checklist, because the
+      content field keeps its own `TextFieldValue` and follows only deliberate external writes.
+
+      **Found 2026-08-15:** converting to a text note displayed an empty note. The text was never
+      actually lost — it was in state, it was saved, and converting back restored it — but it read
+      as total loss, and typing into the apparently-empty note would have overwritten the real
+      content and made it loss in fact. `onToggleType` now emits the converted text so the field
+      follows it. **Inherited** — Smart Toolkit's `onToggleType` has the same omission.
+
+      Item ids changing across the round trip is correct, not a regression: the conversion rebuilds
+      items from text, so the reconciliation inserts new rows and deletes the old ones.
 
 ---
 
@@ -78,6 +123,27 @@ back for that to work. Neither half has run.
 - [ ] Type a title only, press back, reopen the list — the note is saved.
 - [ ] Open a **new** note, type nothing, press back — no empty note is created.
 - [ ] Type, then press back **before** 2 seconds elapse — the note still saves (back forces a save).
+- [ ] Repeat that on a **new** note ten times in a row, as fast as you can. Exactly one note should
+      appear per attempt. Two is the failure.
+
+      This is now a regression check rather than a hunt. `savedNoteId` is only assigned after the
+      insert returns, so a back-press save overlapping the timer's save could once have had both
+      read it as 0 and insert separately. `saveNow` is serialised behind a `Mutex`, which removes
+      the window rather than narrowing it.
+
+      **Ran 2026-08-15, 11 attempts before the fix: no duplicates.** Read that result carefully —
+      pressing back comfortably inside 2s means the timer never fired, so only one save path ran
+      and the race was never actually attempted. The window is a few milliseconds around the point
+      where the timer fires and back is pressed together, which is not reliably hittable by hand.
+      The fix was applied because the window was real in the code, not because it was observed.
+
+      Judge duplicates by insert *timing*, not by content — a test that types the same word each
+      round produces identical notes legitimately. Two rows created within a few milliseconds of
+      each other is the signal; seconds apart is just you.
+
+      **Inherited, not a port defect.** Smart Toolkit's `NotepadViewModel` has the same shape
+      (plain `savedNoteId`, cancel-and-restart `autoSaveJob`, assignment after the insert), so it
+      is reachable there too and did not on its own block 1.0.
 - [ ] Predictive back / gesture back behaves the same as the top-bar arrow.
 
 ---
@@ -93,8 +159,27 @@ back for that to work. Neither half has run.
       `adb shell run-as com.theamericanmaker.tickbox.debug ls files/note_images`
 - [ ] Delete a note that has images. Wait past the 5s undo window. The files are gone from
       `note_images/`. **This is the orphan cleanup working.**
-- [ ] Then relaunch the app and confirm the startup sweep did **not** delete anything still in use.
-      It skips files under 24h old, so also check against an older library if you can.
+- [x] Then relaunch the app and confirm the startup sweep did **not** delete anything still in use.
+
+      A fresh library cannot test this at all. Every file in it is minutes old, the sweep skips
+      anything under 24h, and so it correctly does nothing — which is indistinguishable from a
+      sweep that is broken. Waiting for an older library is not much better, because by then it is
+      running against data you care about. Backdate probe files instead:
+
+      ```bash
+      P=com.theamericanmaker.tickbox.debug
+      adb shell "run-as $P sh -c 'cd files/note_images && echo x > orphan-old.jpg && echo x > orphan-fresh.jpg && touch -t 202601010900 orphan-old.jpg && touch -t 202601010900 <a-real-referenced-image>.jpg'"
+      adb shell am force-stop $P && adb shell am start -n $P/com.theamericanmaker.tickbox.MainActivity
+      ```
+
+      Three outcomes, one per branch: `orphan-old.jpg` **deleted**, `orphan-fresh.jpg` **kept**
+      (the 24h guard), and the backdated real image **kept** — that last one proving the database
+      decides what is referenced, not the file's age. Back the real images up first with
+      `adb exec-out run-as $P cat files/note_images/<name>` in case the sweep gets it wrong, and
+      remove the leftover probe afterwards.
+
+      **Ran 2026-08-15, first ever execution: all three correct.** No rows left pointing at missing
+      files, nothing in logcat.
 
 ---
 
@@ -152,6 +237,36 @@ back for that to work. Neither half has run.
 
 - [ ] `./gradlew assembleRelease` succeeds. It is minified with `isShrinkResources = true` and
       currently **unsigned** — signing arrives in Phase 10.
+- [x] **No device needed for this one.** Check that R8 left the persisted enum names alone — every
+      one of these should print `ok`:
+
+      ```bash
+      for s in TEXT CHECKLIST CHECKBOX CIRCLE STAR HEART SQUARE SYSTEM LIGHT DARK; do printf "%-10s %s\n" "$s" "$(unzip -p app/build/outputs/apk/release/app-release-unsigned.apk classes.dex | strings -a | grep -qF "$s" && echo ok || echo MISSING)"; done
+      ```
+
+      **Do not use `mapping.txt` for this.** It will show `NoteType -> g4.e`, which looks like a
+      failure and is not — R8 renames the *class* while leaving the constant name strings alone,
+      and the strings are the only part that matters.
+
+      Why it matters: `NoteType` and `ChecklistIconStyle` are written to SQLite as `enum.name`, to
+      the backup JSON by `buildExportJson`, and `ThemeMode` to DataStore — and every read is a
+      tolerant `fromName(…) ?: TEXT`. A rename would not crash. Imports from Smart Toolkit would
+      arrive as empty text notes, exports would stop being readable by Smart Toolkit, and a mapping
+      that shifted between two releases would reset an existing library on upgrade. All silent, and
+      none of it visible in a debug build. `proguard-android-optimize.txt` keeps `values()` and
+      `valueOf()` but **not** the constants themselves, so nothing in the config guarantees this.
+
+      **Ran 2026-08-14 against AGP 8.13.2 / Kotlin 2.1.0 / R8: all ten present, passes.** Recheck
+      after any AGP or R8 bump, since nothing pins the behaviour. If it ever fails, the fix is
+      `proguard-rules.pro`:
+
+      ```
+      -keepclassmembers enum com.theamericanmaker.tickbox.data.model.** { *; }
+      -keepclassmembers enum com.theamericanmaker.tickbox.data.UserPreferencesRepository$ThemeMode { *; }
+      ```
+
+      A failure here would be **inherited**, not a port defect: Smart Toolkit ships minified with
+      the same defaults and the same missing rules.
 - [ ] Install that APK and repeat at least sections A and B. **R8 has never been exercised against
       this code**, and Room plus reflection is exactly where shrinking tends to break. If something
       works in debug and not in release, suspect `proguard-rules.pro`.
