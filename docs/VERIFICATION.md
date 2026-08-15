@@ -252,11 +252,29 @@ back for that to work. Neither half has run.
       the pending uri was gone by the time the camera returned. No snackbar, and the temp file
       leaked too.*
 
-      *Fixed — `rememberSaveable` for both, plus a message when the capture succeeds but its
-      destination was lost. **Not yet re-run on hardware**: it needs a configuration change while
-      the camera activity is open. Either repeat it by hand, or set
-      `adb shell settings put global always_finish_activities 1` to force the recreation
-      deterministically — and put it back to `0` afterwards.*
+      *Fixed with `rememberSaveable` for both, plus a message when the capture succeeds but its
+      destination was lost.*
+
+      **Verified 2026-08-15:** rotating the device with the camera open now attaches the photo. The
+      image count went 2 → 3, and the new file carries the rotation correctly.
+
+      The leaked temp files are fixed too, and the old ones are the proof. `cache/camera_temp` still
+      held **three** orphans from the original failing session — and each is a full 4000×3000 JPEG
+      carrying **`EXIF Orientation = 3`**, the 180° case. They are the photos that "vanished": the
+      capture succeeded, the uri was lost across the recreation, and the cleanup handle went with
+      it. Their orientation tag is also the independent confirmation of
+      [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14) — the camera really was writing a
+      rotation the app then ignored. Captures after the fix leave nothing behind.
+
+      Two things worth knowing:
+
+      - **A failed capture is recoverable while it lasts.** The full-resolution original sits in
+        `cache/camera_temp` until Android reclaims the cache:
+        `adb exec-out run-as com.theamericanmaker.tickbox.debug cat cache/camera_temp/<name> > out.jpg`
+      - **Nothing sweeps `camera_temp`.** Orphans only accumulate when a capture fails, and the
+        system clears `cacheDir` under pressure, so this is a wart rather than a leak — but a
+        startup sweep of files older than a day would cost little, mirroring what `note_images`
+        already does.
 - [ ] The OCR badge shows on thumbnails and the viewer has an "Extract text" button — both
       appeared automatically when the Tesseract engine landed (they were gated on one existing).
       Full OCR checks live in section J.
