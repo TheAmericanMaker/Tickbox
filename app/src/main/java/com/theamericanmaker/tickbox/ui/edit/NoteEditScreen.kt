@@ -761,6 +761,10 @@ fun NoteEditScreen(
                                     focusRequester = focusRequesters.getOrNull(actualIndex) ?: FocusRequester(),
                                     indentLevel = indexed.value.indentLevel,
                                     iconStyle = state.iconStyle,
+                                    // Checked items arrive here from the section above; without
+                                    // this they teleport. Safe on this half — these rows are not
+                                    // drag targets, so there is no gesture for it to fight.
+                                    modifier = Modifier.animateItem(),
                                 )
                             }
                         }

@@ -6,6 +6,15 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Done
 
+- **Appearance setting.** Light / Dark / System, in the list screen's overflow above
+  Export/Import. The preference was stored and applied from the start but nothing ever
+  wrote it, so the setting existed with no way to reach it. Selection applies live with
+  the dialog open — the subject of the dialog is what the app looks like.
+- **Collapsible checked section.** The "N checked items" header folds the section away,
+  with "Uncheck all" and "Delete checked" in a new editor overflow that appears only when
+  something is checked. Unchecking preserves positions, so a weekly list comes back in the
+  order it was built.
+- **Snackbar clear of the FAB.** Undo used to sit underneath the + button.
 - **FAB menu.** The + button opens a two-item menu (New checklist / New note). It used to
   create whichever type matched the active filter chip — the same button silently did
   different things depending on invisible state.
@@ -23,38 +32,44 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Next up (ranked)
 
-1. **Collapsible checked section.** The "N checked items" section gets a chevron to fold it
-   away, plus "Uncheck all" and "Delete checked" in the editor's overflow. Long grocery
-   lists end up mostly-checked; today the dead weight is always visible.
-2. **Snackbar above the FAB.** Undo currently can overlap the + button; pad the snackbar
-   host so they never fight.
-3. **48dp touch targets** for indent/outdent (24dp today), item delete (32dp), and the drag
-   handle (28dp). Half-size targets are the single most felt roughness on a real device.
-   Changes row density — do it as one deliberate pass, not per-control.
-4. **M3 top bar scroll behaviour.** `enterAlways` on the editor so the bar tucks away while
+1. **48dp touch targets** for indent/outdent (24dp today), item delete (32dp), and the drag
+   handle (measured 17×28dp on a Fold cover display). Half-size targets are the single most
+   felt roughness on a real device.
+
+   Not a matter of removing the `.size()` overrides: `IconButton` already reserves 48dp
+   until something shrinks it, so restoring the default would put handle + outdent + indent
+   + checkbox at 192dp of controls on a ~344dp-wide screen and squeeze the text field to
+   nothing. The vertical axis is free — rows already measure ~48dp tall — so height costs
+   nothing and width is the whole decision. It probably needs the indent controls to stop
+   being permanently visible on every row, which is a design change rather than a sizing
+   one. **Decide on a device with a real list.**
+2. **Completion micro-animation — half done.** `animateItem()` is on the checked rows, so an
+   item animates *into* the checked section instead of teleporting. The unchecked half is
+   missing: those rows live inside `ReorderableItem`, where `animateItem` and the drag
+   gesture both want to own placement. Doing it properly means finding the combination the
+   reorderable library supports, and re-running section K afterwards — drag-to-reorder is
+   verified working today and is not worth regressing for a flourish.
+3. **M3 top bar scroll behaviour.** `enterAlways` on the editor so the bar tucks away while
    a long checklist scrolls; consider `LargeTopAppBar` collapsing on the list.
-5. **Completion micro-animation.** A checked item should visibly drift to the checked
-   section (scale/fade through the move) rather than teleport. `animateItem()` on the
-   editor's rows gets most of this for free.
-6. **Swipe-to-delete reveal.** Icon plus the word "Delete", revealed progressively with
+4. **Swipe-to-delete reveal.** Icon plus the word "Delete", revealed progressively with
    swipe fraction, instead of a full-red flash at first pixel.
-7. **M3 SearchBar.** Replace the OutlinedTextField with the proper search component:
+5. **M3 SearchBar.** Replace the OutlinedTextField with the proper search component:
    autofocus on open, a clear (×) button, keyboard search action.
-8. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
+6. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
    haptics in Smart Toolkit's other tools; notes never got them.
-9. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
+7. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
    actual identity pass; keep the monochrome layer for themed icons.
-10. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
-    beside the date instead of tinting the whole card — calmer list, label still legible.
-    Decide on a device with real data; whole-card tint may win.
-11. **Label name inline in the colour picker.** Selecting a colour in the editor shows
-    only a check mark; echo the name ("Green") beside the row.
-12. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
+8. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
+   beside the date instead of tinting the whole card — calmer list, label still legible.
+   Decide on a device with real data; whole-card tint may win.
+9. **Label name inline in the colour picker.** Selecting a colour in the editor shows
+   only a check mark; echo the name ("Green") beside the row.
+10. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
     with a dynamic theme; blend them toward the scheme's primary the way `ColorUtils`
     harmonisation does. Low urgency, high subtlety.
-13. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
+11. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
     the body/first item.
-14. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
+12. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
     lot of chrome; moving pickers behind a palette icon would calm the editor. Sketch
     first — it trades discoverability for calm.
 
