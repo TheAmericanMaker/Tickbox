@@ -598,33 +598,54 @@ temporary diagnostic that crossed page-segmentation mode with input preprocessin
 | greyscale + contrast | `Mid Michigan \| 5298 Drow` — 22 chars |
 | **2× upscale** | **catastrophic** — 384 characters of hallucinated noise |
 
-Read by elimination:
+Those first passes all pointed away from the obvious answers — greyscale and contrast barely moved
+it, and a 2× upscale made it *dramatically worse*, which rules resolution out rather than in.
+Swapping in the 15 MB `tessdata_best` model changed **nothing**: byte-identical failure, in 112 ms.
 
-- **Not page segmentation**, though `PSM_SINGLE_BLOCK` is roughly four times better than the current
-  `PSM_AUTO` on this image and is worth revisiting on its own merits — one image is not enough to
-  change the default on.
-- **Not binarization.** Greyscale and contrast moved it barely.
-- **Not resolution.** Upscaling made it dramatically worse, which also rules resolution *out* as the
-  binding constraint: the model is not starved of pixels, it is misreading the ones it has.
+Two facts together gave it away: two very different models failing *identically*, and doing it far
+too fast for a 1500×2000 page. Both mean the recogniser was never seeing most of the image.
 
-That leaves the model. `tessdata_fast` is the speed-optimised integer build, and this is what its
-accuracy costs on a photograph.
+**Root cause, from dumping `TessBaseAPI.getThresholdedImage()`** — the binarised page Tesseract
+actually reads from. Tesseract applies a **global Otsu threshold**, one cut-off for the whole frame.
+A phone photo of paper does not have one exposure: half the sheet was lit and half shadowed, so the
+single threshold put lit paper on one side and shadowed paper on the other. The dump shows the page
+rendered as a black region with the text *inverted* to white, and a blown-out white blob eating the
+right-hand side. Every line dissolved exactly where it crossed that boundary — which is precisely
+the truncation pattern in the table above.
 
-**Next step before filling in the verdict: swap in the standard `tessdata` model and re-run this
-exact image.** No rebuild needed to try it — push it straight over the copy the app already
-extracted to its own storage:
+Not the model, not the resolution, not the segmentation. The image was being destroyed before
+recognition began.
 
-```bash
-adb push eng.traineddata /data/local/tmp/ && adb shell "run-as com.theamericanmaker.tickbox.debug cp /data/local/tmp/eng.traineddata files/tessdata/eng.traineddata"
-```
+**Fix: Sauvola local thresholding**, which thresholds against local mean and variance so a lighting
+gradient stops mattering. Leptonica ships inside tesseract4android already, so it costs no
+dependency and about 200 ms.
 
-Note in passing, unrelated to the verdict: `saveFromUri` downscales with `inSampleSize`, which only
-halves in powers of two, so a 4000px photo becomes **2000px** rather than the 2560 `MAX_DIMENSION`
-allows. Worth tightening if OCR survives — but the upscale result above says it is not what is
-breaking this.
+| image | before | after |
+| --- | --- | --- |
+| Packing slip (photo of paper) | `Mid Michiga` | `Mid Michigan Mfg LLC` / `9298 Drow Rd` / `Prescott MI 48756` |
+| Todo list (photo of a screen) | already good | unchanged |
 
-**Verdict box:** keep `tessdata_fast` / upgrade to standard `tessdata` / drop OCR from 1.0.
-*Still open — do not fill this in until the standard model has been tried.*
+One digit is still wrong (`9298` for `5298`). The 15 MB model fixes exactly that one digit and
+nothing else, which is not worth 11 MB.
+
+**Sauvola is not a free win, and is not applied unconditionally.** On the photo *of a screen* it was
+markedly worse than Tesseract's own thresholding — local thresholding mangles screen moiré and
+anti-aliased glyphs. So both passes run and the better result wins, scored by how many tokens in the
+output look like real words.
+
+That scoring is deliberately not Tesseract's own confidence, and both of its signals were tried
+first: `meanConfidence()` is an average over what was recognised, so it *rewards reading less* and
+picked `Mid Michiga` over the full address; `wordConfidences()` counts internal candidate blobs
+including discarded ones, and reported **192 words for 134 characters of output**. Pinned by
+`ReadableWordCountTest`, using the real captured strings.
+
+Note in passing: `saveFromUri` downscales with `inSampleSize`, which only halves in powers of two,
+so a 4000px photo becomes **2000px** rather than the 2560 `MAX_DIMENSION` allows. Not what was
+breaking this, but worth tightening.
+
+**Verdict: keep `tessdata_fast`.** The model was never the problem. Re-run the boxes above on fresh
+photos to confirm across more subjects, but the keep/upgrade/drop question is settled — there is no
+case for the larger model, and none for dropping the feature.
 
 ---
 
