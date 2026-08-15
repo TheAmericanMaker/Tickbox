@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.theamericanmaker.tickbox.container
+import com.theamericanmaker.tickbox.data.ChecklistProgress
 import com.theamericanmaker.tickbox.data.NoteEntity
 import com.theamericanmaker.tickbox.data.NoteImageStore
 import com.theamericanmaker.tickbox.data.NoteRepository
@@ -25,7 +26,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -34,6 +34,8 @@ data class NoteListUiState(
     val searchQuery: String = "",
     val filterType: NoteType? = null,
     val pendingDeleteNote: NoteEntity? = null,
+    /** Checked/total per checklist note, so cards can show "3 of 8 done". */
+    val checklistProgress: Map<Long, ChecklistProgress> = emptyMap(),
     val isLoaded: Boolean = false,
 )
 
@@ -64,7 +66,7 @@ class NoteListViewModel(
                 filter != null -> repository.getNotesByType(filter.name)
                 else -> repository.getAllNotes()
             }
-            notesFlow.map { notes ->
+            notesFlow.combine(repository.checklistProgress()) { notes, progress ->
                 NoteListUiState(
                     // The pending note stays in the database until the undo window
                     // closes, so it is filtered out of the list rather than deleted.
@@ -72,6 +74,7 @@ class NoteListViewModel(
                     searchQuery = query,
                     filterType = filter,
                     pendingDeleteNote = pending,
+                    checklistProgress = progress.associateBy { it.noteId },
                     isLoaded = true,
                 )
             }

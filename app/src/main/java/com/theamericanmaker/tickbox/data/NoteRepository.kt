@@ -23,6 +23,8 @@ class NoteRepository(
 
     fun searchNotes(query: String): Flow<List<NoteEntity>> = noteDao.searchNotes(query)
 
+    fun checklistProgress(): Flow<List<ChecklistProgress>> = checklistItemDao.getProgressByNote()
+
     suspend fun getNoteWithItems(noteId: Long): Note? {
         val entity = noteDao.getNoteById(noteId) ?: return null
         val checklistItems = if (entity.type == NoteType.CHECKLIST.name) {

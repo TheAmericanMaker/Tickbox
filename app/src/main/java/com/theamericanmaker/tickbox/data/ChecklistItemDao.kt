@@ -7,11 +7,27 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
+
+/** Checked/total counts for one note's checklist, for the list screen's progress line. */
+data class ChecklistProgress(
+    val noteId: Long,
+    val total: Int,
+    val checked: Int,
+)
 
 @Dao
 interface ChecklistItemDao {
     @Query("SELECT * FROM checklist_items WHERE noteId = :noteId ORDER BY position ASC")
     suspend fun getItemsForNoteOnce(noteId: Long): List<ChecklistItemEntity>
+
+    // SUM over a 0/1 integer column; GROUP BY guarantees at least one row per group,
+    // so the sum can never be null.
+    @Query(
+        "SELECT noteId, COUNT(*) AS total, SUM(isChecked) AS checked " +
+            "FROM checklist_items GROUP BY noteId",
+    )
+    fun getProgressByNote(): Flow<List<ChecklistProgress>>
 
     @Insert
     suspend fun insert(item: ChecklistItemEntity): Long

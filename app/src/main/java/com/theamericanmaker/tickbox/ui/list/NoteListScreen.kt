@@ -40,6 +40,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -71,13 +72,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.theamericanmaker.tickbox.data.ChecklistProgress
 import com.theamericanmaker.tickbox.data.NoteEntity
 import com.theamericanmaker.tickbox.data.model.NoteType
 import com.theamericanmaker.tickbox.ui.NotesTopBar
 import com.theamericanmaker.tickbox.ui.edit.NoteCategorizer
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 private const val BACKUP_FILE_NAME = "tickbox_notes_backup.zip"
 
@@ -154,6 +157,7 @@ fun NoteListContent(
     var showSearch by rememberSaveable { mutableStateOf(false) }
     var searchText by rememberSaveable { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
+    var showFabMenu by remember { mutableStateOf(false) }
     val bottomScrollBuffer = (LocalConfiguration.current.screenHeightDp * 0.35f).dp
 
     Scaffold(
@@ -196,12 +200,34 @@ fun NoteListContent(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            val isChecklistFilter = uiState.filterType == NoteType.CHECKLIST
-            FloatingActionButton(onClick = { if (isChecklistFilter) onNewChecklist() else onNewNote() }) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = if (isChecklistFilter) "New checklist" else "New note",
-                )
+            // A small menu rather than filter-dependent behaviour: the FAB used to
+            // create whichever type matched the active filter chip, which meant the
+            // same button silently did different things.
+            Box {
+                FloatingActionButton(onClick = { showFabMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Add a note or checklist",
+                    )
+                }
+                DropdownMenu(expanded = showFabMenu, onDismissRequest = { showFabMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("New checklist") },
+                        leadingIcon = { Icon(Icons.Filled.Checklist, contentDescription = null) },
+                        onClick = {
+                            showFabMenu = false
+                            onNewChecklist()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("New note") },
+                        leadingIcon = { Icon(Icons.Filled.Notes, contentDescription = null) },
+                        onClick = {
+                            showFabMenu = false
+                            onNewNote()
+                        },
+                    )
+                }
             }
         },
     ) { padding ->
@@ -246,9 +272,11 @@ fun NoteListContent(
                         items(pinned, key = { it.id }) { note ->
                             SwipeToDismissNoteCard(
                                 note = note,
+                                progress = uiState.checklistProgress[note.id],
                                 onClick = { onNoteClick(note.id) },
                                 onDelete = { onDeleteNote(note) },
                                 onTogglePin = { onTogglePin(note) },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                         if (unpinned.isNotEmpty()) {
@@ -259,9 +287,11 @@ fun NoteListContent(
                     items(unpinned, key = { it.id }) { note ->
                         SwipeToDismissNoteCard(
                             note = note,
+                            progress = uiState.checklistProgress[note.id],
                             onClick = { onNoteClick(note.id) },
                             onDelete = { onDeleteNote(note) },
                             onTogglePin = { onTogglePin(note) },
+                            modifier = Modifier.animateItem(),
                         )
                     }
                 }
@@ -360,6 +390,7 @@ private fun EmptyState(uiState: NoteListUiState) {
 @Composable
 private fun SwipeToDismissNoteCard(
     note: NoteEntity,
+    progress: ChecklistProgress?,
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
@@ -401,13 +432,20 @@ private fun SwipeToDismissNoteCard(
         enableDismissFromStartToEnd = false,
         enableDismissFromEndToStart = true,
     ) {
-        NoteCard(note = note, onClick = onClick, onDelete = onDelete, onTogglePin = onTogglePin)
+        NoteCard(
+            note = note,
+            progress = progress,
+            onClick = onClick,
+            onDelete = onDelete,
+            onTogglePin = onTogglePin,
+        )
     }
 }
 
 @Composable
 private fun NoteCard(
     note: NoteEntity,
+    progress: ChecklistProgress?,
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
@@ -442,7 +480,28 @@ private fun NoteCard(
             },
             supportingContent = {
                 if (isChecklist) {
-                    Text("Checklist", maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                    // The list is where you decide which checklist needs attention, so
+                    // the card says how far along each one is rather than just what it is.
+                    Column {
+                        Text(
+                            text = when {
+                                progress == null || progress.total == 0 -> "Checklist"
+                                progress.checked == progress.total ->
+                                    "All ${progress.total} done"
+                                else -> "${progress.checked} of ${progress.total} done"
+                            },
+                            maxLines = 1,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        if (progress != null && progress.total > 0) {
+                            LinearProgressIndicator(
+                                progress = { progress.checked / progress.total.toFloat() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp, end = 8.dp),
+                            )
+                        }
+                    }
                 } else {
                     Text(
                         text = note.content.take(80),
@@ -454,8 +513,7 @@ private fun NoteCard(
             },
             overlineContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    val formatter = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
-                    Text(formatter.format(Date(note.updatedAt)), style = MaterialTheme.typography.labelSmall)
+                    Text(formatNoteDate(note.updatedAt), style = MaterialTheme.typography.labelSmall)
                     val label = note.colorLabel ?: note.category
                     if (label != null) {
                         Text(
@@ -493,5 +551,19 @@ private fun NoteCard(
                 }
             },
         )
+    }
+}
+
+/**
+ * "Today" and "Yesterday" beat a calendar date for the notes people actually touch,
+ * which in a notes app is most of the visible list.
+ */
+private fun formatNoteDate(epochMillis: Long): String {
+    val noteDate = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    val today = LocalDate.now()
+    return when (noteDate) {
+        today -> "Today"
+        today.minusDays(1) -> "Yesterday"
+        else -> noteDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
     }
 }
