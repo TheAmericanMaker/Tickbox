@@ -57,16 +57,13 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
    handle (measured 17×28dp on a Fold cover display). Half-size targets are the single most
    felt roughness on a real device.
 
-   Cheaper than it was: indent and delete now only appear on the focused row, so sizing them
-   up costs width on one row at a time rather than on every line.
-
-   Not a matter of removing the `.size()` overrides: `IconButton` already reserves 48dp
-   until something shrinks it, so restoring the default would put handle + outdent + indent
-   + checkbox at 192dp of controls on a ~344dp-wide screen and squeeze the text field to
-   nothing. The vertical axis is free — rows already measure ~48dp tall — so height costs
-   nothing and width is the whole decision. It probably needs the indent controls to stop
-   being permanently visible on every row, which is a design change rather than a sizing
-   one. **Decide on a device with a real list.**
+   Much cheaper than it was. The blocker used to be width: `IconButton` reserves 48dp until
+   something shrinks it, so restoring the defaults would have put handle + outdent + indent +
+   checkbox at 192dp of controls on a ~344dp-wide screen and squeezed the text to nothing.
+   Indent and delete now appear only on the focused row, so that cost lands on one row at a
+   time instead of on every line — and the vertical axis was always free, since rows already
+   measure ~48dp tall. What is left is sizing up the handle and the checkbox, plus the two
+   revealed controls. **Decide on a device with a real list.**
 3. **Completion micro-animation — half done.** `animateItem()` is on the checked rows, so an
    item animates *into* the checked section instead of teleporting. The unchecked half is
    missing: those rows live inside `ReorderableItem`, where `animateItem` and the drag
