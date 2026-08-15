@@ -227,9 +227,16 @@ back for that to work. Neither half has run.
       a rotation hint and tolerated it. Tesseract does not, so this broke section J outright.
 
       Fixed by reading the tag before decoding and baking the rotation into the pixels. **Verified
-      with crafted fixtures:** an 800×400 landscape JPEG tagged `Orientation=6` now stores as
+      with a crafted fixture:** an 800×400 landscape JPEG tagged `Orientation=6` now stores as
       **400×800 portrait** with the marker band on the right edge — matching exactly what the system
-      photo picker renders. All eight orientations are handled, mirrors included.
+      photo picker renders. All eight orientations are handled in code, mirrors included, but only
+      `6` has been driven end-to-end through the device.
+
+      **Confirmed again 2026-08-15 on real camera photos**, which is the stronger evidence: a photo
+      taken with the phone upright now stores **1500×2000 portrait**. The sensor produces 2000×1500
+      landscape natively, so a portrait file can only mean the rotation was applied — before the fix
+      every camera photo stored 2000×1500 regardless of how it was taken. The owner confirms they
+      display the right way up.
 
       To re-test: generate fixtures with PIL (`exif[274] = orientation`), `adb push` them to
       `/sdcard/Pictures/`, broadcast `MEDIA_SCANNER_SCAN_FILE` so the picker sees them, attach, then
@@ -384,14 +391,30 @@ older than the 24h guard is swept on that launch.
 
 ## G. Dictation
 
+**Reported working 2026-08-15** by the owner on a Galaxy Z Fold 5, as a whole flow. The boxes below
+record which parts that statement actually settles and which are still individually unexercised —
+"dictation is fine" covers the happy path, not the edge cases it was written to catch.
+
 - [ ] First use shows the voice-input disclosure dialog. Cancel dismisses it without recording.
-- [ ] Accept it — dictation runs, and the dialog does not reappear next time.
-- [ ] **No microphone permission prompt appears at any point.** `RECORD_AUDIO` was removed
+      *The cancel branch specifically is unexercised.*
+- [x] Accept it — dictation runs, and the dialog does not reappear next time. *Dictation ran.*
+- [x] **No microphone permission prompt appears at any point.** `RECORD_AUDIO` was removed
       deliberately: `RecognizerIntent` runs in the system recogniser's process, which holds the
       permission. If a prompt or a crash appears here, that removal was wrong.
+
+      *Confirmed 2026-08-15, and this one is provable rather than observed: `RECORD_AUDIO` appears
+      neither in `AndroidManifest.xml` nor in the built APK, so Android cannot raise a runtime
+      prompt for it at all. Dictation working regardless is what validates the removal.*
+
+      ```bash
+      aapt2 dump permissions app/build/outputs/apk/debug/app-debug.apk
+      ```
 - [ ] Dictate into a text note with the caret mid-text — the text inserts at the caret, not the end.
+      *Not separately exercised; needs the caret deliberately placed mid-text.*
 - [ ] Dictate into a checklist — it splits into separate items.
+      *Not separately exercised.*
 - [ ] On a device with no recogniser, it shows a message rather than crashing.
+      *Hard to test on hardware that has one; needs an emulator image without it.*
 
 ---
 
