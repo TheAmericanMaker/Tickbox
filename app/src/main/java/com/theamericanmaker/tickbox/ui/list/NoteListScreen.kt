@@ -62,6 +62,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -377,11 +378,15 @@ private fun SwipeToDismissNoteCard(
 
     SwipeToDismissBox(
         state = dismissState,
-        modifier = modifier,
+        // The inset belongs here rather than on the card inside. Padding the card left the
+        // delete background filling the whole row behind it, so the red showed as a frame
+        // around every card at rest, with no swipe in progress.
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         backgroundContent = {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .clip(CardDefaults.shape)
                     .background(MaterialTheme.colorScheme.errorContainer)
                     .padding(horizontal = 24.dp),
                 contentAlignment = Alignment.CenterEnd,
@@ -423,9 +428,10 @@ private fun NoteCard(
     val isChecklist = note.type == NoteType.CHECKLIST.name
 
     Card(
+        // No padding here: the swipe container owns the inset, so that the delete background
+        // behind this card is confined to the card's own bounds.
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = cardContainerColor),
     ) {
