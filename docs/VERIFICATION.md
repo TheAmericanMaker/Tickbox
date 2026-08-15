@@ -199,6 +199,26 @@ back for that to work. Neither half has run.
       the drop would be silent. All three constants agree at 5 — editor, attachment row, and the
       import path.*
 - [ ] Tap an image — full-screen viewer opens, pinch-zoom and pan work.
+- [x] Attached photos appear **the right way up**, from both the camera and the gallery, whichever
+      way the phone was held.
+
+      **Failed 2026-08-15 —
+      [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14).** Every camera photo is stored
+      rotated: shot normally it lands on its side, shot with the phone sideways it lands
+      upside-down. `saveFromUri` decodes with `BitmapFactory` (which ignores EXIF `Orientation`) and
+      re-encodes with `compress` (which writes none), so the rotation is baked into the pixels and
+      the tag that would have corrected it is destroyed. Confirmed on the pulled files: three camera
+      photos all stored 2000×1500 landscape with **no EXIF**; the only image that read correctly was
+      a screenshot, which never depended on a tag.
+
+      **Inherited**, but do not treat it as non-blocking on that basis — Smart Toolkit used ML Kit,
+      which takes a rotation hint and tolerated it. Tesseract does not, so this now breaks section J
+      outright.
+- [x] Take a photo **with the phone in a different orientation than the editor**, and confirm it
+      attaches. *Failed 2026-08-15 —
+      [#15](https://github.com/TheAmericanMaker/Tickbox/issues/15): the photo is silently discarded.
+      `cameraImageUri` is plain `remember`, so the rotation recreates the activity and the pending
+      uri is gone by the time the camera returns. No snackbar, and the temp file leaks too.*
 - [ ] The OCR badge shows on thumbnails and the viewer has an "Extract text" button — both
       appeared automatically when the Tesseract engine landed (they were gated on one existing).
       Full OCR checks live in section J.
@@ -443,8 +463,27 @@ Wired 2026-08-15 (tesseract4android 4.9.0 + bundled `tessdata_fast/eng`). Compil
 is to *drop OCR from 1.0* if results embarrass the app, and the upgrade path is the standard
 `tessdata` model (~15 MB instead of ~4 MB).
 
+> **Blocked, 2026-08-15 — finish this section only after
+> [#14](https://github.com/TheAmericanMaker/Tickbox/issues/14) is fixed.** The first attempt found
+> that every camera photo is stored rotated, because EXIF orientation is dropped on import. Tesseract
+> has no tolerance for that, so the boxes below are currently measuring the rotation bug rather than
+> OCR quality, and any verdict drawn from them would be wrong.
+>
+> What the attempt did establish, which is the useful half:
+>
+> - On an **upright** image, `tessdata_fast` is **good** — a screenshot of dense UI text came back
+>   near-perfect, including layout and punctuation. That is the one data point taken on an image
+>   that never depended on an orientation tag, and it is encouraging for the keep/upgrade decision.
+> - On a **90°** image, output degrades badly.
+> - On a **180°** image, output is unusable and unmistakably inverted — a company name and street
+>   address returned character-reversed and bottom-up.
+>
+> So the engine is probably fine and the pipeline feeding it is not. Re-run the whole section on
+> corrected images before filling in the verdict box.
+
 - [ ] Attach a photo of a **flat printed page** (book, letter). Extract. Expect near-perfect text.
 - [ ] A **shopping receipt** (narrow columns, small type).
+      *Attempted 2026-08-15 — stored on its side, output garbage. Blocked on #14.*
 - [ ] A **product label** (curved surface).
 - [ ] A **handwritten list** — expect this to be poor; Tesseract does not do handwriting. Confirm
       it fails politely (garbage text or "No text found", never a crash).
