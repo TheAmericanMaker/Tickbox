@@ -13,25 +13,25 @@ The full extraction plan, including the remaining roadmap, is in
 
 ## Read this before trusting the build
 
-**CI proves the project compiles, lints, and packages. It does not prove the app works.**
-As of the extraction being complete, **nothing has ever run on a device or emulator**, and there
-are **no tests** — `testDebugUnitTest` passes vacuously because no test source exists yet. Do not
-read a green build as working software.
+**CI proves the project compiles, lints, passes the JVM test suite, and packages.** The suite
+(`app/src/test`) covers the data layer, the backup format, the share formatter, and the editor's
+state machine — all on the JVM via Robolectric, no emulator. What CI still cannot prove is
+on-device behaviour: gestures, dictation, camera, OCR quality, R8. That lives in
+[docs/VERIFICATION.md](docs/VERIFICATION.md), parts of which have been run on real hardware and
+parts not — the checklist itself records which is which.
 
-The extraction was done in an environment with no Android SDK and no access to `dl.google.com`, so
-GitHub Actions was the only compiler available. That constraint does not apply on a normal machine:
-build and run locally, and prefer doing so over trusting CI.
-
-The highest-value work available right now is [docs/VERIFICATION.md](docs/VERIFICATION.md) — the
-device checklist covering what the compiler cannot see.
+Much of the original code was written in an environment with no Android SDK and no access to
+`dl.google.com`, where GitHub Actions was the only available compiler. That constraint does not
+apply on a normal machine: build and run locally, and prefer doing so over trusting CI.
 
 ## Commands
 
 ```bash
 ./gradlew assembleDebug        # debug APK -> app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # no tests exist yet; passes vacuously
+./gradlew testDebugUnitTest    # the whole test suite; JVM only, no emulator
 ./gradlew lintDebug            # Android lint
-./gradlew assembleRelease      # minified; UNSIGNED (no signing config yet — Phase 10)
+./gradlew ktlintCheck          # style (advisory in CI until an initial ktlintFormat commit)
+./gradlew assembleRelease      # minified; signed only if a keystore is configured
 ```
 
 Requires **JDK 17** and **Android SDK Platform 35**.
@@ -129,15 +129,21 @@ and check nothing legitimate disappears.
 
 These are decisions, not oversights. Check the plan before "fixing" them.
 
-- **No OCR engine.** `TextRecognizer` returns null from the container, so the extract-text
-  affordance is hidden. Smart Toolkit used Google ML Kit, which is proprietary and would make the
-  app ineligible for F-Droid. Tesseract (`tesseract4android`) is the intended replacement — Phase 6
-  — and it needs a quality spike on real photos before being committed to.
-- **No drag-to-reorder.** The original rendered a drag handle with no gesture attached, which
-  TalkBack announced as a reorder affordance that did not exist; that handle was removed. Real
-  reordering is not a wiring job: the checklist renders as two filtered sections (unchecked, then
-  checked) whose display order does not match the underlying list indices, so a drag between
-  visible neighbours can map to non-adjacent items. It needs those sections remodelled.
+- **OCR quality is unproven.** Tesseract (tesseract4android + `tessdata_fast/eng`) is wired and
+  compiles, but nobody has pointed it at a real photo yet. Expect seconds per recognition and
+  weaker results than ML Kit on curved or dim subjects; the standard `tessdata` model (~15 MB) is
+  the drop-in upgrade if `fast` disappoints. Note the dependency comes from **JitPack**
+  (content-filtered to that one group in `settings.gradle.kts`) because the library publishes
+  nowhere else; F-Droid disallows JitPack, so the eventual fdroiddata recipe must build the
+  library from source (`publishToMavenLocal`, same coordinates).
+- **Drag-to-reorder works by key, not index.** The checklist renders as two filtered sections, so
+  display position ≠ list index; `onReorderChecklistItems` takes tempIds for that reason. Don't
+  "simplify" it back to indices — that reintroduces the bug that kept this feature out of the
+  original app.
+- **Smart Toolkit migration testing was dropped by the owner** (one user, grocery lists). The
+  archive format compatibility is still maintained and tested — `NoteImportArchiveTest` and
+  `BackupRoundTripTest` pin it — but nobody is expected to run a real Smart Toolkit export
+  through it before release.
 - **Indent is capped at one level**, matching the original.
 - **24dp touch targets** on the indent/outdent buttons, half Android's 48dp minimum. Part of the
   planned accessibility pass, not a quick fix — it changes layout density.

@@ -2,51 +2,29 @@
 
 What CI cannot tell us. Everything here needs a device or emulator (API 26+).
 
-Nothing in this document has been run yet, apart from the one box in section I that is marked done
-— it needs no device. The extraction was verified only to the extent that it compiles, lints, and
-packages. Treat every other box below as genuinely unknown, and record what you find — a failure
-here is expected and useful, not a surprise.
+Boxes marked done record real device runs, with dates and findings inline. Everything unmarked is
+genuinely unknown — record what you find; a failure here is expected and useful, not a surprise.
+The JVM test suite (`./gradlew testDebugUnitTest`) covers the data layer, the backup format, and
+the editor state machine; this document covers the rest.
 
-Suggested order: **A first** (it guards real data), then **B** (it is where the new code is), then
-the rest.
+Suggested order: **B** first if re-verifying after data-layer changes, then **J** and **K** (the
+newest untested code), then the rest.
 
 ---
 
-## A. Migration from Smart Toolkit
+## A. Migration from Smart Toolkit — DROPPED
 
-The whole point of the extraction. Do this before anything destructive.
+**Dropped by owner decision, 2026-08-15:** the app has one user, the notes are grocery lists, and
+re-typing them costs less than the ceremony below. Nobody is expected to run a real Smart Toolkit
+export through Tickbox before release.
 
-**Before you start:** export from Smart Toolkit **twice, to two separate destinations** — cloud and
-PC, not just internal storage. That archive is the only copy of the data and also the fixture for
-the regression test.
+What survives from this section:
 
-**Check the size first.** The importer rejects archives over **64 MB**, more than **200 images**, or
-more than **5 images on any one note**. It surfaces as a generic "Backup file is too large."
-If the real export exceeds any of these, raise `MAX_IMPORT_TOTAL_BYTES` (and friends) in
-`data/backup/NoteImportArchive.kt` before trying — they are client-side sanity limits, not the
-security boundary. The per-entry caps are what stop zip bombs; leave those.
-
-- [ ] Smart Toolkit → notes → ⋮ → **Export**. Save the ZIP off-device, twice.
-- [ ] Install Tickbox **debug** (`.debug` suffix, so it coexists with everything).
-- [ ] Tickbox → ⋮ → **Import**, pick the ZIP. It reports a note and image count.
-- [ ] Note **count** matches.
-- [ ] The **longest checklist** is intact: item text, order, checked state, indent levels.
-- [ ] **Pinned** notes are pinned, and sort to the top.
-- [ ] **Icon styles** survived (checkbox / circle / star / heart / square).
-- [ ] **Timestamps** survived — created and updated dates look right, not "now".
-- [ ] Every **image-bearing note** still has its images, in the right order, on the right note.
-- [ ] **Colour labels are absent.** This is correct and expected: Smart Toolkit's exporter never
-      wrote the field, so that data was already lost before Tickbox saw it. Re-apply by hand.
-- [ ] Emoji and non-ASCII text in titles round-trip cleanly.
-
-**Then prove the format is now lossless in both directions:**
-
-- [ ] Set a colour label on a few notes in Tickbox.
-- [ ] Export from Tickbox → clear app data → import that archive.
-- [ ] Everything above survives, **including colour labels** this time.
-
-**Keep Smart Toolkit installed for at least two weeks.** Different applicationIds mean separate
-databases and separate storage; uninstalling it is irreversible.
+- The **archive format compatibility is still maintained** — it is now pinned by
+  `NoteImportArchiveTest` and `BackupRoundTripTest` rather than by a manual runbook. A Smart
+  Toolkit export should still import; it just isn't release-gating.
+- The importer's limits still stand (64 MB archive, 200 images, 5 per note, 10 MB per image),
+  and remain adjustable in `data/backup/NoteImportArchive.kt` if ever needed.
 
 ---
 
@@ -182,7 +160,9 @@ back for that to work. Neither half has run.
       the drop would be silent. All three constants agree at 5 — editor, attachment row, and the
       import path.*
 - [ ] Tap an image — full-screen viewer opens, pinch-zoom and pan work.
-- [ ] There is **no "Extract text" button** and no OCR badge. Correct until Tesseract lands.
+- [ ] The OCR badge shows on thumbnails and the viewer has an "Extract text" button — both
+      appeared automatically when the Tesseract engine landed (they were gated on one existing).
+      Full OCR checks live in section J.
 - [x] Remove an image — it disappears, and the file is gone from disk:
       `adb shell run-as com.theamericanmaker.tickbox.debug ls files/note_images`
       *Passed 2026-08-15 — row and file both gone.*
@@ -347,9 +327,63 @@ older than the 24h guard is swept on that launch.
 
       A failure here would be **inherited**, not a port defect: Smart Toolkit ships minified with
       the same defaults and the same missing rules.
-- [ ] Install that APK and repeat at least sections A and B. **R8 has never been exercised against
-      this code**, and Room plus reflection is exactly where shrinking tends to break. If something
-      works in debug and not in release, suspect `proguard-rules.pro`.
+- [ ] Install that APK and repeat at least sections B, J and K. **R8 has never been exercised
+      against this code end-to-end**, and Room plus reflection is exactly where shrinking tends to
+      break. If something works in debug and not in release, suspect `proguard-rules.pro`. The
+      release build now also carries Tesseract's JNI surface — run one OCR extraction on the
+      minified build specifically (keep rules exist for `com.googlecode.tesseract.android.**` and
+      leptonica, but only a run proves them).
+
+---
+
+## J. OCR — Tesseract quality spike
+
+Wired 2026-08-15 (tesseract4android 4.9.0 + bundled `tessdata_fast/eng`). Compiles and packages;
+**never executed**. This is a quality decision, not just a works/doesn't check: the plan's fallback
+is to *drop OCR from 1.0* if results embarrass the app, and the upgrade path is the standard
+`tessdata` model (~15 MB instead of ~4 MB).
+
+- [ ] Attach a photo of a **flat printed page** (book, letter). Extract. Expect near-perfect text.
+- [ ] A **shopping receipt** (narrow columns, small type).
+- [ ] A **product label** (curved surface).
+- [ ] A **handwritten list** — expect this to be poor; Tesseract does not do handwriting. Confirm
+      it fails politely (garbage text or "No text found", never a crash).
+- [ ] **Ten photos of the kind you actually take**, since grocery/errand snapshots are the real
+      workload. Judge: would you trust the output enough to keep the feature?
+- [ ] First extraction on a fresh install includes the one-time model copy from assets — confirm
+      it completes and that a **second** extraction is faster.
+- [ ] The button shows "Extracting text…" with a spinner for the seconds Tesseract needs, and the
+      UI stays responsive throughout (recognition runs off the main thread; a frozen UI here is a
+      bug, not a slow engine).
+- [ ] Extraction failure (try a 0-byte or corrupt image if you can craft one) surfaces a snackbar,
+      not silence.
+- [ ] Extracted text lands as checklist items in a checklist, and as appended text in a text note.
+- [ ] The "Tip: tap an image to extract text" hint appears once, on the first image ever attached,
+      and never again.
+- [ ] Airplane mode changes nothing — the engine is fully on-device.
+
+**Verdict box:** keep `tessdata_fast` / upgrade to standard `tessdata` / drop OCR from 1.0.
+
+---
+
+## K. Drag-to-reorder — on device
+
+Implemented 2026-08-15, key-based. The state-machine move is unit-tested; the gesture is not.
+
+- [ ] Long-press the handle and drag an item one position. It lands exactly where dropped, and
+      **stays** after backing out and reopening (positions are rewritten on save).
+- [ ] Drag the top unchecked item to the bottom of the unchecked section, and bottom to top.
+- [ ] With **checked items present**, drag an unchecked item downward past the "Add item" row —
+      it must not enter the checked section, and nothing should crash or teleport.
+- [ ] Drag with a **blank item** in the middle of the list. The blank row moves like any other.
+- [ ] Drag an **indented** item — indentation travels with it.
+- [ ] Reorder, then press back within 2 seconds. The new order persists (the mid-save id
+      write-back guard is exactly this scenario).
+- [ ] Reorder while the numbered labels are visible — numbering re-flows to match the new order.
+- [ ] The row visibly lifts (highlight) while dragged, and drops cleanly.
+- [ ] TalkBack: the handle announces "Reorder" and is now a real, functioning control. (Gesture
+      alternatives for accessibility are a known gap — note what TalkBack offers, if anything.)
+- [ ] Checked items have **no** drag handle.
 
 ---
 

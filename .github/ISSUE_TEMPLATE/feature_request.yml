@@ -1,0 +1,27 @@
+name: Feature request
+description: Propose an addition or change
+labels: [enhancement]
+body:
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: >
+            I've read the scope section of CONTRIBUTING.md and this isn't on the
+            permanently-out-of-scope list (markdown, reminders, sync, accounts,
+            cloud, collaboration).
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation where you missed this, not the mechanism.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+    validations:
+      required: true
