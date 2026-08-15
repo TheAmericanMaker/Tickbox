@@ -110,6 +110,7 @@ class NoteEditViewModel(
 
     private var savedNoteId: Long = noteId
     private var autoSaveJob: Job? = null
+    private var isDirty = false
 
     init {
         if (noteId > 0) {
@@ -233,6 +234,10 @@ class NoteEditViewModel(
             state.copy(checklistItems = items)
         }
         viewModelScope.launch { _focusItemIndex.emit(insertAt) }
+        // The new row is blank, so this schedules a save that mostly writes nothing. It has to:
+        // every other mutation marks the note dirty through here, and without it, adding an item
+        // and pressing back would drop the row.
+        scheduleAutoSave()
     }
 
     fun onDeleteChecklistItem(index: Int) {
@@ -402,6 +407,7 @@ class NoteEditViewModel(
     }
 
     private fun scheduleAutoSave() {
+        isDirty = true
         autoSaveJob?.cancel()
         autoSaveJob = viewModelScope.launch {
             delay(AUTOSAVE_DELAY_MS)
@@ -409,8 +415,21 @@ class NoteEditViewModel(
         }
     }
 
-    /** Called on back press as well as by the autosave timer. */
+    /**
+     * Called on back press.
+     *
+     * Skipping the save when nothing changed is what stops merely opening a note from rewriting
+     * it. An unconditional save here stamps `updatedAt`, and because the list sorts on that,
+     * browsing the library silently reorders it and `updatedAt` comes to mean "last looked at"
+     * rather than "last changed".
+     *
+     * This is only safe because every user-initiated mutation routes through [scheduleAutoSave],
+     * which is what sets the flag. A mutation that skips it would be dropped here instead of
+     * being caught by the old unconditional save — so new mutating functions must call it, even
+     * when the change looks too small to save.
+     */
     fun save() {
+        if (!isDirty) return
         viewModelScope.launch { saveNow() }
     }
 
@@ -427,6 +446,9 @@ class NoteEditViewModel(
 
     private suspend fun saveNow() = saveMutex.withLock {
         val state = _uiState.value
+        // Cleared against this snapshot, so an edit arriving mid-save re-marks the note and the
+        // next save picks it up rather than the change being swallowed.
+        isDirty = false
         val hasContent = state.title.isNotBlank() ||
             state.content.isNotBlank() ||
             state.checklistItems.any { it.text.isNotBlank() }
