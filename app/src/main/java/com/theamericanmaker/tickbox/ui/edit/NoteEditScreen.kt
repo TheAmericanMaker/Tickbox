@@ -43,17 +43,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FormatColorReset
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,6 +84,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -88,18 +95,17 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.ui.focus.FocusRequester
 import com.theamericanmaker.tickbox.data.model.ChecklistIconStyle
 import com.theamericanmaker.tickbox.data.model.ChecklistItem
 import com.theamericanmaker.tickbox.data.model.NoteType
 import com.theamericanmaker.tickbox.ui.NotesTopBar
 import com.theamericanmaker.tickbox.ui.edit.templates.TemplatePickerBottomSheet
 import com.theamericanmaker.tickbox.ui.share.NoteShareFormatter
+import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import java.io.File
 
 private const val DICTATION_TARGET_TITLE = "title"
 private const val DICTATION_TARGET_CONTENT = "content"
@@ -130,6 +136,9 @@ fun NoteEditScreen(
     var contentInitialized by rememberSaveable { mutableStateOf(false) }
     var showDictationDisclosure by rememberSaveable { mutableStateOf(false) }
     var pendingDictationTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    // Starts expanded, so nothing a user already had in front of them disappears on upgrade.
+    var checkedExpanded by rememberSaveable { mutableStateOf(true) }
+    var showEditorMenu by remember { mutableStateOf(false) }
 
     val lazyListState = rememberLazyListState()
     // Keys, not indices: the checklist displays as two filtered sections, so a row's
@@ -406,6 +415,36 @@ fun NoteEditScreen(
                     ) {
                         Icon(Icons.Filled.Share, contentDescription = "Share")
                     }
+                    // Only earns a slot when there is something checked to act on: on a text note
+                    // or a fresh checklist both entries would be dead.
+                    if (state.type == NoteType.CHECKLIST && state.checklistItems.any { it.isChecked }) {
+                        IconButton(onClick = { showEditorMenu = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                        }
+                        DropdownMenu(
+                            expanded = showEditorMenu,
+                            onDismissRequest = { showEditorMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Uncheck all") },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.CheckBoxOutlineBlank, contentDescription = null)
+                                },
+                                onClick = {
+                                    showEditorMenu = false
+                                    viewModel.onUncheckAll()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete checked") },
+                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                                onClick = {
+                                    showEditorMenu = false
+                                    viewModel.onDeleteChecked()
+                                },
+                            )
+                        }
+                    }
                 },
             )
         },
@@ -671,16 +710,41 @@ fun NoteEditScreen(
                         if (checkedItems.isNotEmpty()) {
                             item {
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                                Text(
-                                    text = "${checkedItems.size} checked " +
-                                        if (checkedItems.size == 1) "item" else "items",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
-                                )
+                                // The header is the fold control. A long grocery list ends up
+                                // mostly checked, and that dead weight otherwise sits between you
+                                // and the items you still need.
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(MaterialTheme.shapes.small)
+                                        .clickable { checkedExpanded = !checkedExpanded }
+                                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = if (checkedExpanded) {
+                                            Icons.Filled.ExpandLess
+                                        } else {
+                                            Icons.Filled.ExpandMore
+                                        },
+                                        contentDescription = if (checkedExpanded) {
+                                            "Hide checked items"
+                                        } else {
+                                            "Show checked items"
+                                        },
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        text = "${checkedItems.size} checked " +
+                                            if (checkedItems.size == 1) "item" else "items",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(start = 8.dp),
+                                    )
+                                }
                             }
                             itemsIndexed(
-                                checkedItems,
+                                if (checkedExpanded) checkedItems else emptyList(),
                                 key = { _, indexed -> indexed.value.tempId },
                             ) { _, indexed ->
                                 val actualIndex = indexed.index

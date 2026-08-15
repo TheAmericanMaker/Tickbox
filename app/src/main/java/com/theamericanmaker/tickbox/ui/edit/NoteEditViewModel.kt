@@ -208,6 +208,37 @@ class NoteEditViewModel(
         updateItem(index) { it.copy(isChecked = checked) }
     }
 
+    /**
+     * Unchecks everything, in place.
+     *
+     * Positions are untouched, so a weekly shopping list comes back in the order it was built
+     * rather than reshuffled by whatever order things were ticked off in.
+     */
+    fun onUncheckAll() {
+        if (_uiState.value.checklistItems.none { it.isChecked }) return
+        _uiState.update { state ->
+            state.copy(checklistItems = state.checklistItems.map { it.copy(isChecked = false) })
+        }
+        scheduleAutoSave()
+    }
+
+    /**
+     * Removes every checked item.
+     *
+     * Keeps one blank row if that would empty the list, because the editor assumes a checklist is
+     * never completely empty — `canDelete` guards the same invariant on the per-row delete.
+     */
+    fun onDeleteChecked() {
+        if (_uiState.value.checklistItems.none { it.isChecked }) return
+        _uiState.update { state ->
+            val remaining = state.checklistItems.filterNot { it.isChecked }
+            state.copy(
+                checklistItems = remaining.ifEmpty { listOf(ChecklistItemUiState()) },
+            )
+        }
+        scheduleAutoSave()
+    }
+
     fun onIndentItem(index: Int) {
         updateItem(index) { item ->
             if (item.indentLevel < MAX_INDENT_LEVEL) item.copy(indentLevel = item.indentLevel + 1) else item

@@ -250,7 +250,12 @@ fun NoteListContent(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            // Lifted clear of the FAB: Scaffold puts both at the bottom and the snackbar spans
+            // the full width, so Undo sat underneath the + button and could be tapped through.
+            // 56dp FAB plus its 16dp margin.
+            SnackbarHost(snackbarHostState, modifier = Modifier.padding(bottom = 72.dp))
+        },
         floatingActionButton = {
             // A small menu rather than filter-dependent behaviour: the FAB used to
             // create whichever type matched the active filter chip, which meant the
