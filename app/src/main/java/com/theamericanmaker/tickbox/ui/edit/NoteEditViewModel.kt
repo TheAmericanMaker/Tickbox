@@ -32,6 +32,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.UUID
 
@@ -404,7 +406,18 @@ class NoteEditViewModel(
         viewModelScope.launch { saveNow() }
     }
 
-    private suspend fun saveNow() {
+    /**
+     * Serialised deliberately.
+     *
+     * The autosave timer and the back-press both reach [saveNow], and on a note that has not
+     * been inserted yet they would each read `savedNoteId` as 0 and insert separately, leaving
+     * two copies. The window is only a few milliseconds wide — around the point where the timer
+     * fires and back is pressed together — which makes it rare enough to be missed by hand and
+     * not worth trying to reproduce. Serialising the two paths removes it outright.
+     */
+    private val saveMutex = Mutex()
+
+    private suspend fun saveNow() = saveMutex.withLock {
         val state = _uiState.value
         val hasContent = state.title.isNotBlank() ||
             state.content.isNotBlank() ||

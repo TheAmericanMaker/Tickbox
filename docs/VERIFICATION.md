@@ -102,14 +102,24 @@ back for that to work. Neither half has run.
 - [ ] Repeat that on a **new** note ten times in a row, as fast as you can. Exactly one note should
       appear per attempt. Two is the failure.
 
-      `savedNoteId` is only assigned after the insert returns, `save()` does not cancel the pending
-      `autoSaveJob`, and nothing serialises the two paths — so a back-press save that overlaps the
-      timer's save can have both read `savedNoteId` as 0 and insert separately. The window is
-      narrow, which is why this needs repeating rather than one careful attempt.
+      This is now a regression check rather than a hunt. `savedNoteId` is only assigned after the
+      insert returns, so a back-press save overlapping the timer's save could once have had both
+      read it as 0 and insert separately. `saveNow` is serialised behind a `Mutex`, which removes
+      the window rather than narrowing it.
+
+      **Ran 2026-08-15, 11 attempts before the fix: no duplicates.** Read that result carefully —
+      pressing back comfortably inside 2s means the timer never fired, so only one save path ran
+      and the race was never actually attempted. The window is a few milliseconds around the point
+      where the timer fires and back is pressed together, which is not reliably hittable by hand.
+      The fix was applied because the window was real in the code, not because it was observed.
+
+      Judge duplicates by insert *timing*, not by content — a test that types the same word each
+      round produces identical notes legitimately. Two rows created within a few milliseconds of
+      each other is the signal; seconds apart is just you.
 
       **Inherited, not a port defect.** Smart Toolkit's `NotepadViewModel` has the same shape
       (plain `savedNoteId`, cancel-and-restart `autoSaveJob`, assignment after the insert), so it
-      is reachable there too and does not on its own block 1.0.
+      is reachable there too and did not on its own block 1.0.
 - [ ] Predictive back / gesture back behaves the same as the top-bar arrow.
 
 ---
