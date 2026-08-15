@@ -129,13 +129,21 @@ and check nothing legitimate disappears.
 
 These are decisions, not oversights. Check the plan before "fixing" them.
 
-- **OCR quality is unproven.** Tesseract (tesseract4android + `tessdata_fast/eng`) is wired and
-  compiles, but nobody has pointed it at a real photo yet. Expect seconds per recognition and
-  weaker results than ML Kit on curved or dim subjects; the standard `tessdata` model (~15 MB) is
-  the drop-in upgrade if `fast` disappoints. Note the dependency comes from **JitPack**
-  (content-filtered to that one group in `settings.gradle.kts`) because the library publishes
-  nowhere else; F-Droid disallows JitPack, so the eventual fdroiddata recipe must build the
-  library from source (`publishToMavenLocal`, same coordinates).
+- **OCR runs two passes and keeps the better one — don't "simplify" it to one.** Tesseract's own
+  global Otsu threshold assumes a single exposure across the frame, which a photo of paper does not
+  have: on a half-shadowed packing slip it binarised the page into a black region and a white blob
+  and returned `Mid Michiga` from a clean four-line address. Sauvola local thresholding fixes that
+  completely, **but is worse on photos of screens**, where it mangles moiré and anti-aliasing. So
+  both run and the output with more word-like tokens wins. The scoring is deliberately not
+  Tesseract's own confidence — `meanConfidence()` rewards reading *less*, and `wordConfidences()`
+  counts internal blobs that never reach the text. See `TesseractTextRecognizer.binarise` and
+  `ReadableWordCountTest`; the reasoning is in `docs/VERIFICATION.md` section J.
+- **The 4 MB `tessdata_fast` model is deliberate and sufficient.** The 15 MB `tessdata_best` was
+  measured against it on the failing image and was **byte-identical** until the thresholding was
+  fixed, after which it corrected exactly one digit. Not worth 11 MB. Note the dependency comes
+  from **JitPack** (content-filtered to that one group in `settings.gradle.kts`) because the
+  library publishes nowhere else; F-Droid disallows JitPack, so the eventual fdroiddata recipe must
+  build the library from source (`publishToMavenLocal`, same coordinates).
 - **Drag-to-reorder works by key, not index.** The checklist renders as two filtered sections, so
   display position ≠ list index; `onReorderChecklistItems` takes tempIds for that reason. Don't
   "simplify" it back to indices — that reintroduces the bug that kept this feature out of the

@@ -573,7 +573,79 @@ is to *drop OCR from 1.0* if results embarrass the app, and the upgrade path is 
       and never again.
 - [ ] Airplane mode changes nothing — the engine is fully on-device.
 
-**Verdict box:** keep `tessdata_fast` / upgrade to standard `tessdata` / drop OCR from 1.0.
+### What the second round found (2026-08-15)
+
+Owner testing after the rotation fix, results in two pinned notes:
+
+- **Screenshot of a todo list: excellent.** Full sentences, punctuation, `tok/s`, `GPU/RAM`,
+  `run_bench.sh` — essentially perfect.
+- **Photo of a printed packing slip: fails badly.** `Mid Michigan Mfg LLC / 5298 Drow Rd /
+  Prescott MI 48756` came back as `Mid Michiga`. Eleven characters.
+
+The note recording it is titled "narrow small letters", but the image says otherwise: that address
+block is **large, crisp, high-contrast and upright**. Whatever is failing, it is not text size. What
+differs from the screenshot is the *scene* — busy dark background, shadow gradient, curved paper.
+
+**So the cause was isolated on device**, against the same image, same library, same model, with a
+temporary diagnostic that crossed page-segmentation mode with input preprocessing:
+
+| variant | result |
+| --- | --- |
+| `PSM_AUTO` (current default) | `Mid Michiga` — 11 chars |
+| `PSM_SINGLE_BLOCK` | `Mid Michigan Mf \| 5298 Drow Re \| Prescott \| 4` — 42 chars |
+| `PSM_SPARSE_TEXT` | worse than SINGLE_BLOCK |
+| greyscale | negligible change |
+| greyscale + contrast | `Mid Michigan \| 5298 Drow` — 22 chars |
+| **2× upscale** | **catastrophic** — 384 characters of hallucinated noise |
+
+Those first passes all pointed away from the obvious answers — greyscale and contrast barely moved
+it, and a 2× upscale made it *dramatically worse*, which rules resolution out rather than in.
+Swapping in the 15 MB `tessdata_best` model changed **nothing**: byte-identical failure, in 112 ms.
+
+Two facts together gave it away: two very different models failing *identically*, and doing it far
+too fast for a 1500×2000 page. Both mean the recogniser was never seeing most of the image.
+
+**Root cause, from dumping `TessBaseAPI.getThresholdedImage()`** — the binarised page Tesseract
+actually reads from. Tesseract applies a **global Otsu threshold**, one cut-off for the whole frame.
+A phone photo of paper does not have one exposure: half the sheet was lit and half shadowed, so the
+single threshold put lit paper on one side and shadowed paper on the other. The dump shows the page
+rendered as a black region with the text *inverted* to white, and a blown-out white blob eating the
+right-hand side. Every line dissolved exactly where it crossed that boundary — which is precisely
+the truncation pattern in the table above.
+
+Not the model, not the resolution, not the segmentation. The image was being destroyed before
+recognition began.
+
+**Fix: Sauvola local thresholding**, which thresholds against local mean and variance so a lighting
+gradient stops mattering. Leptonica ships inside tesseract4android already, so it costs no
+dependency and about 200 ms.
+
+| image | before | after |
+| --- | --- | --- |
+| Packing slip (photo of paper) | `Mid Michiga` | `Mid Michigan Mfg LLC` / `9298 Drow Rd` / `Prescott MI 48756` |
+| Todo list (photo of a screen) | already good | unchanged |
+
+One digit is still wrong (`9298` for `5298`). The 15 MB model fixes exactly that one digit and
+nothing else, which is not worth 11 MB.
+
+**Sauvola is not a free win, and is not applied unconditionally.** On the photo *of a screen* it was
+markedly worse than Tesseract's own thresholding — local thresholding mangles screen moiré and
+anti-aliased glyphs. So both passes run and the better result wins, scored by how many tokens in the
+output look like real words.
+
+That scoring is deliberately not Tesseract's own confidence, and both of its signals were tried
+first: `meanConfidence()` is an average over what was recognised, so it *rewards reading less* and
+picked `Mid Michiga` over the full address; `wordConfidences()` counts internal candidate blobs
+including discarded ones, and reported **192 words for 134 characters of output**. Pinned by
+`ReadableWordCountTest`, using the real captured strings.
+
+Note in passing: `saveFromUri` downscales with `inSampleSize`, which only halves in powers of two,
+so a 4000px photo becomes **2000px** rather than the 2560 `MAX_DIMENSION` allows. Not what was
+breaking this, but worth tightening.
+
+**Verdict: keep `tessdata_fast`.** The model was never the problem. Re-run the boxes above on fresh
+photos to confirm across more subjects, but the keep/upgrade/drop question is settled — there is no
+case for the larger model, and none for dropping the feature.
 
 ---
 
