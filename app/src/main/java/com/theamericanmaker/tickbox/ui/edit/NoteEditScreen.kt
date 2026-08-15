@@ -139,6 +139,52 @@ fun NoteEditScreen(
     // Starts expanded, so nothing a user already had in front of them disappears on upgrade.
     var checkedExpanded by rememberSaveable { mutableStateOf(true) }
     var showEditorMenu by remember { mutableStateOf(false) }
+    var showConvertWarning by rememberSaveable { mutableStateOf(false) }
+
+    // Only meaningful for a checklist: converting the other way loses nothing.
+    val tickedItemCount = if (state.type == NoteType.CHECKLIST) state.checklistItems.count { it.isChecked } else 0
+    val indentedItemCount = if (state.type == NoteType.CHECKLIST) {
+        state.checklistItems.count { it.indentLevel > 0 }
+    } else {
+        0
+    }
+
+    if (showConvertWarning) {
+        AlertDialog(
+            onDismissRequest = { showConvertWarning = false },
+            title = { Text("Convert to a note?") },
+            text = {
+                // Naming the actual counts, because "some formatting will be lost" is the kind of
+                // warning people dismiss without reading. This one is losing their ticks.
+                val losses = buildList {
+                    if (tickedItemCount > 0) {
+                        add("$tickedItemCount ticked ${if (tickedItemCount == 1) "item" else "items"}")
+                    }
+                    if (indentedItemCount > 0) {
+                        add("indentation on $indentedItemCount ${if (indentedItemCount == 1) "item" else "items"}")
+                    }
+                }
+                val restoreNote = if (tickedItemCount > 0) {
+                    " Switching back will not restore the ticks."
+                } else {
+                    ""
+                }
+                Text(
+                    "A note is plain text, so ${losses.joinToString(" and ")} will be lost. " +
+                        "The item text itself is kept.$restoreNote",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConvertWarning = false
+                        viewModel.onToggleType()
+                    },
+                ) { Text("Convert") }
+            },
+            dismissButton = { TextButton(onClick = { showConvertWarning = false }) { Text("Cancel") } },
+        )
+    }
 
     val lazyListState = rememberLazyListState()
     // Keys, not indices: the checklist displays as two filtered sections, so a row's
@@ -395,7 +441,18 @@ fun NoteEditScreen(
                     onBack()
                 },
                 actions = {
-                    IconButton(onClick = viewModel::onToggleType) {
+                    IconButton(
+                        onClick = {
+                            // Converting to a note keeps the item text and drops everything else.
+                            // Ask first, but only when there is something to drop — a warning on a
+                            // conversion that loses nothing is just a step to dismiss.
+                            if (tickedItemCount > 0 || indentedItemCount > 0) {
+                                showConvertWarning = true
+                            } else {
+                                viewModel.onToggleType()
+                            }
+                        },
+                    ) {
                         Icon(
                             imageVector = if (state.type == NoteType.TEXT) {
                                 Icons.Filled.Checklist
