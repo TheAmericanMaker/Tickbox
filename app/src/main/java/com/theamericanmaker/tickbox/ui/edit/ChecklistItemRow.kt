@@ -7,6 +7,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,7 +21,7 @@ import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -54,9 +55,34 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.theamericanmaker.tickbox.data.model.ChecklistIconStyle
+
+// Row spacing. These four were tuned by measuring where ink actually lands, because the
+// visible gaps are not the gaps in the layout: each control draws a small glyph inside a much
+// larger touch box, and it is the leftover padding you see. Measured between glyph edges, the
+// original row ran 25px / 68px between handle, number and tick box — lopsided, and the 68px
+// read as the row being full of nothing. It is now 40px / 43px.
+//
+// Changing any of these changes the others, so re-measure rather than reason about it.
+
+/** Between controls. Small, because each control's own padding supplies most of the gap. */
+private val ROW_GAP = 2.dp
+
+/** Grip box. The glyph is the six-dot indicator, which is 25px of ink against the tick's 53px. */
+private val HANDLE_SIZE = 26.dp
+
+/** Fixed and centred, so numbers stay in a column and neither side gains a hole. */
+private val NUMBER_WIDTH = 22.dp
+
+/**
+ * Tick box. Below Checkbox's default, which drew a 53px glyph in a 126px box and put 36px of
+ * dead space either side of it. Material3 keeps the *interactive* size independent of this, so
+ * the touch target still measures ~45dp on device — the padding shrank, the tappability did not.
+ */
+private val TICK_SIZE = 38.dp
 
 /** How far the tick box must travel sideways before it counts as an indent. */
 private val INDENT_DRAG_STEP = 28.dp
@@ -107,14 +133,13 @@ fun ChecklistItemRow(
             .padding(start = (indentLevel * 24).dp)
             .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
         if (dragHandleModifier != null) {
             Icon(
-                imageVector = Icons.Filled.DragHandle,
+                imageVector = Icons.Filled.DragIndicator,
                 contentDescription = "Reorder",
-                modifier = dragHandleModifier
-                    .size(28.dp)
-                    .padding(end = 4.dp),
+                modifier = dragHandleModifier.size(HANDLE_SIZE),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
         }
@@ -124,7 +149,8 @@ fun ChecklistItemRow(
                 text = "$itemNumber.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(24.dp),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(NUMBER_WIDTH),
             )
         }
 
@@ -197,8 +223,7 @@ fun ChecklistItemRow(
             },
             modifier = Modifier
                 .weight(1f)
-                .focusRequester(focusRequester)
-                .padding(horizontal = 4.dp),
+                .focusRequester(focusRequester),
             textStyle = TextStyle(
                 color = textColor,
                 fontSize = MaterialTheme.typography.bodyLarge.fontSize,
@@ -248,7 +273,7 @@ private fun ChecklistIcon(
     modifier: Modifier = Modifier,
 ) {
     if (iconStyle == ChecklistIconStyle.CHECKBOX) {
-        Checkbox(checked = isChecked, onCheckedChange = onCheckedChange, modifier = modifier)
+        Checkbox(checked = isChecked, onCheckedChange = onCheckedChange, modifier = modifier.size(TICK_SIZE))
         return
     }
 
@@ -260,7 +285,7 @@ private fun ChecklistIcon(
         ChecklistIconStyle.CHECKBOX -> Icons.Filled.CheckBox to Icons.Filled.CheckBoxOutlineBlank
     }
 
-    IconButton(onClick = { onCheckedChange(!isChecked) }, modifier = modifier.size(40.dp)) {
+    IconButton(onClick = { onCheckedChange(!isChecked) }, modifier = modifier.size(TICK_SIZE)) {
         Icon(
             imageVector = if (isChecked) checkedIcon else uncheckedIcon,
             contentDescription = if (isChecked) "Checked" else "Unchecked",
