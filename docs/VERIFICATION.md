@@ -519,12 +519,41 @@ record which parts that statement actually settles and which are still individua
 
       A failure here would be **inherited**, not a port defect: Smart Toolkit ships minified with
       the same defaults and the same missing rules.
-- [ ] Install that APK and repeat at least sections B, J and K. **R8 has never been exercised
+- [x] Install that APK and repeat at least sections B, J and K. **R8 has never been exercised
       against this code end-to-end**, and Room plus reflection is exactly where shrinking tends to
       break. If something works in debug and not in release, suspect `proguard-rules.pro`. The
       release build now also carries Tesseract's JNI surface — run one OCR extraction on the
       minified build specifically (keep rules exist for `com.googlecode.tesseract.android.**` and
       leptonica, but only a run proves them).
+
+      **Ran 2026-08-16 on a Galaxy Z Fold 5 — R8 breaks nothing.** Everything below was exercised
+      in the minified build, not inferred from the debug one.
+
+      | | |
+      | --- | --- |
+      | Cold launch | 265 ms, no crash |
+      | Room, autosave, reconciliation | items typed, reordered, ticked, all persisted |
+      | Drag-to-reorder, drag-to-indent | both work — the reorderable library survives minification |
+      | Checklist ↔ note round trip | indent written as spaces, tick restored on the way back |
+      | **Tesseract OCR** | extracted four lines; log shows `Tesseract(native): Initialized Tesseract API with language=eng`, no `UnsatisfiedLinkError` |
+      | **Enum names across a restart** | `ThemeMode.DARK`, `NoteType.CHECKLIST` and `ChecklistIconStyle.STAR` all read back correctly |
+      | **Backup JSON** | `"type": "CHECKLIST"`, `"iconStyle": "STAR"`, `"version": 2` — unmangled, every field present, image included |
+
+      The last two are the ones that mattered: they are the failure modes this section warned
+      would be *silent*, and they were previously checked only by grepping the DEX for strings.
+      A string being present does not prove the round trip; these runs do.
+
+      **No release keystore is needed to repeat this.** Sign the unsigned APK with the debug key:
+
+      ```bash
+      apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android \
+        --ks-key-alias androiddebugkey --out signed.apk app/build/outputs/apk/release/app-release-unsigned.apk
+      ```
+
+      It installs alongside the debug build under its own applicationId, so it starts with an empty
+      library and cannot touch real notes. Note `run-as` does not work on it — a release build is
+      not debuggable, so everything has to be verified through the UI rather than by reading the
+      database. Uninstall it afterwards; it is a second icon in the launcher.
 
 ---
 
