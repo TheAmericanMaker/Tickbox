@@ -51,9 +51,15 @@ private val EDITING = listOf(
     ),
     HowTo(
         "Turn a list into a note, or back",
-        "The button beside Share in the top corner swaps between the two. Going from list " +
-            "to note keeps the words but loses the ticks, so it asks first when there is " +
-            "something to lose.",
+        "The button beside Share in the top corner swaps between the two. Indentation is kept " +
+            "either way. Ticks come back too, as long as you switch straight back without " +
+            "editing the note or leaving it.",
+    ),
+    HowTo(
+        "Paste a list in from somewhere else",
+        "Paste it into a note and switch to a checklist. Bullets, numbers and [x] marks are " +
+            "understood, so a list copied from another app arrives with its ticks and " +
+            "sub-items intact.",
     ),
 )
 

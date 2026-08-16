@@ -40,9 +40,12 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
   keep the caret in view — so long items displayed their *tail*, and a list read as
   "todos completed" / "via run_bench.sh" with the start of every line off the left edge.
   Text went from 39% of the row width to 57%.
-- **Warning before a lossy checklist→note conversion**, and only when there is something to
-  lose. Reported from real use: switching to note style to read a list, and losing the
-  ticks by doing it.
+- **Checklist→note round trip keeps indentation and ticks.** Indentation is written as two
+  leading spaces and parsed back; ticks are remembered and restored if the body comes back
+  unedited. The blocking confirmation this replaced is gone — the conversion is no longer
+  destructive at the moment it happens, and a dialog on a lossless action only teaches people
+  to dismiss dialogs. A snackbar states the rule instead, and only when something is ticked.
+  Pasting a markdown checklist in from another app now works too.
 - **Appearance setting.** Light / Dark / System, in the list screen's overflow above
   Export/Import. The preference was stored and applied from the start but nothing ever
   wrote it, so the setting existed with no way to reach it. Selection applies live with
