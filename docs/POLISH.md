@@ -6,6 +6,12 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Done
 
+- **Help & about screen**, from the list overflow. One screen rather than two entries: the
+  same page answers "how do I indent" and "where is the source". The how-to half is
+  load-bearing rather than decorative — indent-by-drag and reorder-by-grip are gestures with
+  no visible affordance, and this is the only place either is written down for the person
+  using the app. The about half carries version, licence, source and author links, and the
+  no-network claim.
 - **Readable checklist rows.** Item text wraps instead of scrolling, indent moved to a gesture
   on the tick box, and delete shows only on the row being edited. The field used to be `singleLine`, which scrolls to
   keep the caret in view — so long items displayed their *tail*, and a list read as
@@ -53,8 +59,8 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
    - A separate per-note toggle. More faithful, more surface.
 
    The middle option looks right, but it is a product decision rather than a layout one.
-2. **A one-time hint for the indent gesture.** Dragging the tick box sideways to indent is not
-   discoverable on its own. The app already has the pattern — `ocrHintShown` in
+2. **A one-time hint for the indent gesture.** Help & about now documents it, but a page
+   nobody opens is not discovery. The app already has the pattern — `ocrHintShown` in
    `UserPreferencesRepository` shows the OCR tip once and never again — so this is a second
    flag and a snackbar the first time a checklist with more than a couple of items is opened.
 3. **48dp touch targets** for item delete (32dp) and the drag handle (measured 17×28dp on a

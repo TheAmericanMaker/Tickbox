@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notes
@@ -100,6 +101,7 @@ fun NoteListScreen(
     onNoteClick: (Long) -> Unit,
     onNewNote: () -> Unit,
     onNewChecklist: () -> Unit,
+    onOpenHelp: () -> Unit,
     viewModel: NoteListViewModel = viewModel(factory = NoteListViewModel.Factory),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -145,6 +147,7 @@ fun NoteListScreen(
         onExport = { exportLauncher.launch(BACKUP_FILE_NAME) },
         onImport = { importLauncher.launch(arrayOf("application/zip")) },
         onThemeModeChange = viewModel::setThemeMode,
+        onOpenHelp = onOpenHelp,
     )
 }
 
@@ -169,6 +172,7 @@ fun NoteListContent(
     onExport: () -> Unit,
     onImport: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onOpenHelp: () -> Unit,
 ) {
     var showSearch by rememberSaveable { mutableStateOf(false) }
     var searchText by rememberSaveable { mutableStateOf("") }
@@ -244,6 +248,17 @@ fun NoteListContent(
                             onClick = {
                                 showMenu = false
                                 onImport()
+                            },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Help & about") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.HelpOutline, contentDescription = null)
+                            },
+                            onClick = {
+                                showMenu = false
+                                onOpenHelp()
                             },
                         )
                     }

@@ -16,6 +16,7 @@ import com.theamericanmaker.tickbox.ui.list.NoteListScreen
 
 private const val ROUTE_LIST = "notes"
 private const val ROUTE_EDIT = "notes/{noteId}?type={type}"
+private const val ROUTE_HELP = "help"
 
 /** Sentinel for "this note does not exist yet". */
 private const val NEW_NOTE_ID = -1L
@@ -30,6 +31,7 @@ fun TickboxNavHost(navController: NavHostController = rememberNavController()) {
                 onNewChecklist = {
                     navController.navigate("notes/$NEW_NOTE_ID?type=${NoteType.CHECKLIST.name}")
                 },
+                onOpenHelp = { navController.navigate(ROUTE_HELP) },
             )
         }
         composable(
@@ -45,6 +47,9 @@ fun TickboxNavHost(navController: NavHostController = rememberNavController()) {
             ),
         ) {
             NoteEditScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_HELP) {
+            HelpAboutScreen(onBack = { navController.popBackStack() })
         }
     }
 }
