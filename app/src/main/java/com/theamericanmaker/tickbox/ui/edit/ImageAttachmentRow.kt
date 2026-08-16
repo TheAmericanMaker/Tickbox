@@ -34,10 +34,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import java.io.File
 
 private const val MAX_IMAGES = 5
+
+/**
+ * The remove disc on a thumbnail. Half what an IconButton was drawing, which covered 52% of
+ * the 80dp image; small is also right for a destructive control sitting on top of its target.
+ */
+private val REMOVE_BUTTON_SIZE = 22.dp
 
 @Composable
 fun ImageAttachmentRow(
@@ -86,17 +95,28 @@ fun ImageAttachmentRow(
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
-                IconButton(
-                    onClick = { onRemoveImage(index) },
+                // A plain Box rather than an IconButton, because IconButton enforces its own
+                // minimum interactive size and draws the background at *that* size: asking for
+                // 20dp produced a 42dp disc covering half the thumbnail. Here the circle is the
+                // size it says it is.
+                Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .size(20.dp)
-                        .background(MaterialTheme.colorScheme.errorContainer, CircleShape),
+                        .padding(2.dp)
+                        .size(REMOVE_BUTTON_SIZE)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .clickable(role = Role.Button) { onRemoveImage(index) }
+                        // The label belongs on the node that handles the click. IconButton merged
+                        // the two for free; leaving it on the Icon gave TalkBack a labelled
+                        // element with no action beside an action with no label.
+                        .semantics { contentDescription = "Remove image ${index + 1}" },
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Close,
-                        contentDescription = "Remove image ${index + 1}",
-                        modifier = Modifier.size(12.dp),
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.onErrorContainer,
                     )
                 }

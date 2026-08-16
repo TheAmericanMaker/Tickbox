@@ -6,6 +6,10 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Done
 
+- **Smaller remove button on image thumbnails.** It was drawing a 42dp disc that covered 52%
+  of the 80dp thumbnail and spilled past its edges — `IconButton` enforces its own minimum
+  interactive size and paints the background at *that* size, so the requested 20dp was
+  ignored. Drawn explicitly now: 22dp visible, 48dp touch target.
 - **Swipe-to-delete reveals progressively.** The red deepens with the swipe and the word
   "Delete" joins the icon only past 40%, instead of the card flashing full red at the first
   pixel. A gesture you can back out of should look like one.
