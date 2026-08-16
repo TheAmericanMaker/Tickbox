@@ -149,10 +149,11 @@ back for that to work. Neither half has run.
 
 ## C. Autosave and back behaviour
 
-- [ ] Type a title only, press back, reopen the list — the note is saved.
-- [ ] Open a **new** note, type nothing, press back — no empty note is created.
+- [x] Type a title only, press back, reopen the list — the note is saved. *Passed 2026-08-16.*
+- [x] Open a **new** note, type nothing, press back — no empty note is created. *Passed
+      2026-08-16 — the note count was unchanged.*
 - [ ] Type, then press back **before** 2 seconds elapse — the note still saves (back forces a save).
-- [ ] Repeat that on a **new** note ten times in a row, as fast as you can. Exactly one note should
+- [x] Repeat that on a **new** note ten times in a row, as fast as you can. Exactly one note should
       appear per attempt. Two is the failure.
 
       This is now a regression check rather than a hunt. `savedNoteId` is only assigned after the
@@ -173,6 +174,17 @@ back for that to work. Neither half has run.
       **Inherited, not a port defect.** Smart Toolkit's `NotepadViewModel` has the same shape
       (plain `savedNoteId`, cancel-and-restart `autoSaveJob`, assignment after the insert), so it
       is reachable there too and did not on its own block 1.0.
+
+      **Ran again 2026-08-16, and this time the window was actually aimed at.** The note above is
+      right that a hand cannot land on a few-millisecond window — but adb can be told exactly when
+      to press. Twelve attempts with the back-press timed to the 2 s autosave boundary and swept
+      across it: 1940, 1950, 1970, 1980, 1990, 2000, 2000, 2010, 2020, 2030, 2040, 2060 ms after
+      the last keystroke.
+
+      Twelve attempts, twelve notes, inserts ~14.7 s apart with no pair closer than 500 ms —
+      judged by `createdAt` clustering as this box instructs, not by counting rows. The mutex
+      holds under a deliberately aimed attempt, which is a stronger result than the earlier
+      by-hand run could give.
 - [ ] Predictive back / gesture back behaves the same as the top-bar arrow.
 - [x] Open several notes, read them, back out of each **without typing**. None of their `updatedAt`
       values change and the list order does not move.
