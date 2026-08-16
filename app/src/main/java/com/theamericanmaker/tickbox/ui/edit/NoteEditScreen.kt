@@ -39,6 +39,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -85,10 +87,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -194,8 +201,12 @@ fun NoteEditScreen(
     // Keys, not indices: the checklist displays as two filtered sections, so a row's
     // on-screen position is not its index in the ViewModel's list. tempId is the one
     // identity both sides agree on.
+    val haptics = LocalHapticFeedback.current
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         viewModel.onReorderChecklistItems(from.key, to.key)
+        // One tick per row crossed, which is what makes a drag feel like it is moving something
+        // rather than sliding over it.
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
     val isHeaderCollapsed by remember {
         derivedStateOf {
@@ -244,6 +255,7 @@ fun NoteEditScreen(
         }
     }
 
+    val contentFocusRequester = remember { FocusRequester() }
     val focusRequesters = remember { mutableStateListOf<FocusRequester>() }
     LaunchedEffect(state.checklistItems.size) {
         while (focusRequesters.size < state.checklistItems.size) focusRequesters.add(FocusRequester())
@@ -591,6 +603,23 @@ fun NoteEditScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Sentences,
+                            imeAction = ImeAction.Next,
+                        ),
+                        // Next goes on into the note rather than dismissing the keyboard, which
+                        // is what you want after typing a title and nothing else.
+                        keyboardActions = KeyboardActions(
+                            onNext = {
+                                runCatching {
+                                    if (state.type == NoteType.CHECKLIST) {
+                                        focusRequesters.firstOrNull()?.requestFocus()
+                                    } else {
+                                        contentFocusRequester.requestFocus()
+                                    }
+                                }
+                            },
+                        ),
                     )
 
                     ColorLabelPicker(
@@ -651,7 +680,9 @@ fun NoteEditScreen(
                                 viewModel.onContentChange(newValue.text)
                             },
                             label = { Text("Content") },
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .focusRequester(contentFocusRequester),
                         )
                         IconButton(
                             onClick = { launchDictation(DICTATION_TARGET_CONTENT) },
@@ -860,6 +891,7 @@ private fun DictationDisclosureDialog(onDismiss: () -> Unit, onConfirm: () -> Un
 
 @Composable
 private fun ColorLabelPicker(selected: String?, onSelect: (String?) -> Unit) {
+    Column {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -915,6 +947,17 @@ private fun ColorLabelPicker(selected: String?, onSelect: (String?) -> Unit) {
                 }
             }
         }
+    }
+    // A tick on a swatch says one is chosen but not which, and the swatches scroll. Naming it
+    // costs a line only when a colour is actually set.
+    if (selected != null) {
+        Text(
+            text = selected,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+        )
+    }
     }
 }
 

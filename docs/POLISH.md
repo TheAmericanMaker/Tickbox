@@ -6,6 +6,13 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Done
 
+- **Haptics.** A tick when an item is checked and one per row crossed while dragging, joining
+  the one the indent gesture already had.
+- **Colour label names itself.** A tick on a swatch says one is chosen but not which, and the
+  swatches scroll; the name now appears under the row when a colour is set.
+- **Title field IME.** Sentence capitalisation, and Next moves into the note — the first item
+  on a checklist, the body on a note — rather than at whatever sits geometrically below,
+  which was the dictation button.
 - **Smaller remove button on image thumbnails.** It was drawing a 42dp disc that covered 52%
   of the 80dp thumbnail and spilled past its edges — `IconButton` enforces its own minimum
   interactive size and paints the background at *that* size, so the requested 20dp was
@@ -77,21 +84,15 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
    verified working today and is not worth regressing for a flourish.
 3. **M3 top bar scroll behaviour.** `enterAlways` on the editor so the bar tucks away while
    a long checklist scrolls; consider `LargeTopAppBar` collapsing on the list.
-4. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
-   haptics in Smart Toolkit's other tools; notes never got them.
-5. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
+4. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
    actual identity pass; keep the monochrome layer for themed icons.
-6. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
+5. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
    beside the date instead of tinting the whole card — calmer list, label still legible.
    Decide on a device with real data; whole-card tint may win.
-7. **Label name inline in the colour picker.** Selecting a colour in the editor shows
-   only a check mark; echo the name ("Green") beside the row.
-8. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
+6. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
     with a dynamic theme; blend them toward the scheme's primary the way `ColorUtils`
     harmonisation does. Low urgency, high subtlety.
-9. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
-    the body/first item.
-10. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
+7. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
     lot of chrome; moving pickers behind a palette icon would calm the editor. Sketch
     first — it trades discoverability for calm.
 

@@ -153,7 +153,11 @@ fun ChecklistItemRow(
         var dragTravel by remember { mutableFloatStateOf(0f) }
         ChecklistIcon(
             isChecked = isChecked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = { checked ->
+                // Ticking something off is the app's whole point; it should feel like an event.
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onCheckedChange(checked)
+            },
             iconStyle = iconStyle,
             modifier = Modifier.draggable(
                 orientation = Orientation.Horizontal,
