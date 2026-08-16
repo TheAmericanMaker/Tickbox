@@ -153,8 +153,17 @@ These are decisions, not oversights. Check the plan before "fixing" them.
   `BackupRoundTripTest` pin it — but nobody is expected to run a real Smart Toolkit export
   through it before release.
 - **Indent is capped at one level**, matching the original.
-- **24dp touch targets** on the indent/outdent buttons, half Android's 48dp minimum. Part of the
-  planned accessibility pass, not a quick fix — it changes layout density.
+- **Indent is a gesture, not a button — don't add the buttons back.** Drag an item's tick box
+  sideways: right indents, left outdents, tap still ticks. Buttons were tried twice and failed
+  twice. Permanently visible, they spent a fixed slice of every row on a one-level feature, and
+  the owner reported lists as unreadably crowded. Revealed on focus, they were worse: tapping into
+  a row reflowed its text from 513px to 356px, so the line re-wrapped under the finger that was
+  trying to edit it. A gesture has no width and cannot do that. It is undiscoverable on its own,
+  which a one-time hint should fix — but discoverability is a cheaper problem than a layout that
+  moves while you use it.
+- **Any control that appears on focus must reserve its width when hidden.** The delete `×` is
+  composed on every row and merely made transparent, disabled and semantics-free when the row is
+  not focused. Wrapping it in `if (isFocused)` instead is what caused the reflow above.
 - **Search is a `LIKE` scan.** Fine to roughly a thousand notes. FTS when someone measures a
   problem, not before.
 - **`NoteCategorizer` and `ChecklistSuggestionProvider` are hardcoded English keyword maps.** They
