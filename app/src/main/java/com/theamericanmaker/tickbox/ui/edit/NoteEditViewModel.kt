@@ -121,6 +121,36 @@ class NoteEditViewModel(
     /** When the current run of unsaved edits began, or 0 when there is nothing pending. */
     private var dirtySince = 0L
 
+    /**
+     * The checklist as it was the last time this note was converted to text, and the body that
+     * conversion produced.
+     *
+     * Held for as long as the editor is open, which is the span of the thing people actually do:
+     * flip to a note to read the list, then flip back. Leaving the note forgets it, and that is
+     * the honest outcome — persisting it would mean a schema column carrying a shadow copy of a
+     * list that the text may since have contradicted.
+     */
+    private var itemsBeforeConversion: List<ChecklistItemUiState>? = null
+    private var textAtConversion: String? = null
+
+    /**
+     * The checklist for [content] — the remembered one if the body has not been touched since it
+     * was written, otherwise whatever the text parses to.
+     *
+     * Restored items lose their database ids on purpose. Saving the note as text deleted those
+     * rows, so reusing the ids would hand `saveNote` updates for rows that no longer exist and
+     * the items would silently vanish. Fresh ids cost nothing that anyone can see.
+     */
+    private fun itemsFor(content: String): List<ChecklistItemUiState> {
+        val remembered = itemsBeforeConversion
+        if (remembered != null && textAtConversion == content) {
+            itemsBeforeConversion = null
+            textAtConversion = null
+            return remembered.map { it.copy(id = 0) }
+        }
+        return ChecklistConversion.textToItems(content)
+    }
+
     init {
         if (noteId > 0) {
             viewModelScope.launch {
@@ -185,12 +215,17 @@ class NoteEditViewModel(
             _uiState.update { state ->
                 state.copy(
                     type = NoteType.CHECKLIST,
-                    checklistItems = ChecklistConversion.textToItems(state.content),
+                    checklistItems = itemsFor(state.content),
                     content = "",
                 )
             }
         } else {
             val converted = ChecklistConversion.itemsToText(_uiState.value.checklistItems)
+            // Ticks cannot live in the note body without turning it into a form, so they are
+            // held here instead, alongside the exact text they produced. If that text comes
+            // back untouched, nothing was really edited and they can be put back.
+            itemsBeforeConversion = _uiState.value.checklistItems
+            textAtConversion = converted
             _uiState.update { state ->
                 state.copy(
                     type = NoteType.TEXT,
