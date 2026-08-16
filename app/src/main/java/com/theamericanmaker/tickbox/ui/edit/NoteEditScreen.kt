@@ -110,6 +110,9 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 private const val DICTATION_TARGET_TITLE = "title"
 private const val DICTATION_TARGET_CONTENT = "content"
 
+/** Below this a list is too short for sub-items to be worth mentioning. */
+private const val INDENT_HINT_MIN_ITEMS = 4
+
 /** One beat for a newly added row to compose and lay out before it is measured or focused. */
 private const val FOCUS_LAYOUT_SETTLE_MS = 100L
 
@@ -121,6 +124,7 @@ fun NoteEditScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val ocrHintShown by viewModel.ocrHintShown.collectAsStateWithLifecycle()
+    val indentHintShown by viewModel.indentHintShown.collectAsStateWithLifecycle()
     val dictationAcknowledged by viewModel.dictationDisclosureAcknowledged.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -217,6 +221,19 @@ fun NoteEditScreen(
     LaunchedEffect(Unit) {
         viewModel.contentExternalUpdate.collect { newContent ->
             contentFieldValue = TextFieldValue(newContent, TextRange(newContent.length))
+        }
+    }
+
+    // Told once, and only on a list long enough for sub-items to be worth having. Indenting is
+    // a gesture with nothing to see, so the alternative to saying it is nobody finding it.
+    LaunchedEffect(state.type, state.checklistItems.size, indentHintShown) {
+        if (state.type == NoteType.CHECKLIST && !indentHintShown &&
+            state.checklistItems.count { it.text.isNotBlank() } >= INDENT_HINT_MIN_ITEMS
+        ) {
+            // Show first, mark second. Marking flips indentHintShown, which is a key of this
+            // effect, so doing it first cancels the coroutine before the snackbar ever appears.
+            snackbarHostState.showSnackbar("Tip: drag an item's tick box sideways to indent it")
+            viewModel.dismissIndentHint()
         }
     }
 

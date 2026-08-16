@@ -6,6 +6,12 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Done
 
+- **Item numbers dropped.** They renumbered as you used the list: the count ran over the
+  *unchecked* items, so ticking one shifted every number below it — measured, ticking item 2
+  moved item 3 to 2. Not identifiers, a counter that moves while you shop. Text went to 59%
+  of the row width, from 39% before this pass.
+- **One-time hint for the indent gesture.** A snackbar the first time a checklist of four or
+  more items is opened, using the same stored-flag pattern as the OCR tip.
 - **Help & about screen**, from the list overflow. One screen rather than two entries: the
   same page answers "how do I indent" and "where is the source". The how-to half is
   load-bearing rather than decorative — indent-by-drag and reorder-by-grip are gestures with
@@ -46,57 +52,40 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Next up (ranked)
 
-1. **Decide what the item number is for.** After the row cleanup the remaining chrome on an
-   unfocused row is the drag handle, the number and the checkbox. The number costs 24dp on
-   every line — about 7% of the width on a Fold cover display — and on a shopping list it
-   earns nothing; the owner named it as part of the crowding. Three ways out, in rising
-   order of work:
-
-   - Drop it. Simplest, and wrong for anyone who wants an ordered list.
-   - Make it a sixth `ChecklistIconStyle` ("numbered"), reusing the picker that already
-     exists in the editor. Fits the current model, and adding an enum value is the safe
-     kind of backup-format change — every read is a tolerant `fromName(…) ?: CHECKBOX`.
-   - A separate per-note toggle. More faithful, more surface.
-
-   The middle option looks right, but it is a product decision rather than a layout one.
-2. **A one-time hint for the indent gesture.** Help & about now documents it, but a page
-   nobody opens is not discovery. The app already has the pattern — `ocrHintShown` in
-   `UserPreferencesRepository` shows the OCR tip once and never again — so this is a second
-   flag and a snackbar the first time a checklist with more than a couple of items is opened.
-3. **48dp touch targets** for item delete (32dp) and the drag handle (measured 17×28dp on a
+1. **48dp touch targets** for item delete (32dp) and the drag handle (measured 17×28dp on a
    Fold cover display). Half-size targets are the single most felt roughness on a real device.
 
    Much cheaper than it was. The blocker used to be width, and the indent buttons are now gone
    entirely — replaced by a gesture — while delete only shows on the focused row. The vertical
    axis was always free, since rows already measure ~48dp tall. **Decide on a device with a
    real list.**
-4. **Completion micro-animation — half done.** `animateItem()` is on the checked rows, so an
+2. **Completion micro-animation — half done.** `animateItem()` is on the checked rows, so an
    item animates *into* the checked section instead of teleporting. The unchecked half is
    missing: those rows live inside `ReorderableItem`, where `animateItem` and the drag
    gesture both want to own placement. Doing it properly means finding the combination the
    reorderable library supports, and re-running section K afterwards — drag-to-reorder is
    verified working today and is not worth regressing for a flourish.
-5. **M3 top bar scroll behaviour.** `enterAlways` on the editor so the bar tucks away while
+3. **M3 top bar scroll behaviour.** `enterAlways` on the editor so the bar tucks away while
    a long checklist scrolls; consider `LargeTopAppBar` collapsing on the list.
-6. **Swipe-to-delete reveal.** Icon plus the word "Delete", revealed progressively with
+4. **Swipe-to-delete reveal.** Icon plus the word "Delete", revealed progressively with
    swipe fraction, instead of a full-red flash at first pixel.
-7. **M3 SearchBar.** Replace the OutlinedTextField with the proper search component:
+5. **M3 SearchBar.** Replace the OutlinedTextField with the proper search component:
    autofocus on open, a clear (×) button, keyboard search action.
-8. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
+6. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
    haptics in Smart Toolkit's other tools; notes never got them.
-9. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
+7. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
    actual identity pass; keep the monochrome layer for themed icons.
-10. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
+8. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
    beside the date instead of tinting the whole card — calmer list, label still legible.
    Decide on a device with real data; whole-card tint may win.
-11. **Label name inline in the colour picker.** Selecting a colour in the editor shows
+9. **Label name inline in the colour picker.** Selecting a colour in the editor shows
    only a check mark; echo the name ("Green") beside the row.
-12. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
+10. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
     with a dynamic theme; blend them toward the scheme's primary the way `ColorUtils`
     harmonisation does. Low urgency, high subtlety.
-13. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
+11. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
     the body/first item.
-14. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
+12. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
     lot of chrome; moving pickers behind a palette icon would calm the editor. Sketch
     first — it trades discoverability for calm.
 

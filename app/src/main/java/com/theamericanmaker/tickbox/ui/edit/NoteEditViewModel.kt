@@ -104,6 +104,9 @@ class NoteEditViewModel(
 
     val ocrAvailable: Boolean = textRecognizer != null
 
+    val indentHintShown: StateFlow<Boolean> = preferences.indentHintShown
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val ocrHintShown: StateFlow<Boolean> = preferences.ocrHintShown
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -157,6 +160,10 @@ class NoteEditViewModel(
 
     fun dismissOcrHint() {
         viewModelScope.launch { preferences.setOcrHintShown() }
+    }
+
+    fun dismissIndentHint() {
+        viewModelScope.launch { preferences.setIndentHintShown() }
     }
 
     fun acknowledgeDictationDisclosure() {
