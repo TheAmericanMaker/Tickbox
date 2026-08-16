@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -55,7 +54,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.theamericanmaker.tickbox.data.model.ChecklistIconStyle
@@ -73,9 +71,6 @@ private val ROW_GAP = 2.dp
 
 /** Grip box. The glyph is the six-dot indicator, which is 25px of ink against the tick's 53px. */
 private val HANDLE_SIZE = 26.dp
-
-/** Fixed and centred, so numbers stay in a column and neither side gains a hole. */
-private val NUMBER_WIDTH = 22.dp
 
 /**
  * Tick box. Below Checkbox's default, which drew a 53px glyph in a 126px box and put 36px of
@@ -101,7 +96,6 @@ fun ChecklistItemRow(
     canDelete: Boolean,
     focusRequester: FocusRequester,
     indentLevel: Int = 0,
-    itemNumber: Int? = null,
     iconStyle: ChecklistIconStyle = ChecklistIconStyle.CHECKBOX,
     onIndent: (() -> Unit)? = null,
     onOutdent: (() -> Unit)? = null,
@@ -141,16 +135,6 @@ fun ChecklistItemRow(
                 contentDescription = "Reorder",
                 modifier = dragHandleModifier.size(HANDLE_SIZE),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            )
-        }
-
-        if (itemNumber != null) {
-            Text(
-                text = "$itemNumber.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.width(NUMBER_WIDTH),
             )
         }
 

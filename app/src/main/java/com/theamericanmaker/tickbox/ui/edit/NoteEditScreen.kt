@@ -687,13 +687,6 @@ fun NoteEditScreen(
                     val uncheckedItems = state.checklistItems.withIndex().filter { !it.value.isChecked }
                     val checkedItems = state.checklistItems.withIndex().filter { it.value.isChecked }
 
-                    val topLevelNumbers = remember(uncheckedItems) {
-                        var counter = 0
-                        uncheckedItems.map { indexed ->
-                            if (indexed.value.indentLevel == 0) ++counter else null
-                        }
-                    }
-
                     LazyColumn(
                         state = lazyListState,
                         modifier = Modifier.weight(1f),
@@ -702,7 +695,7 @@ fun NoteEditScreen(
                         itemsIndexed(
                             uncheckedItems,
                             key = { _, indexed -> indexed.value.tempId },
-                        ) { listIndex, indexed ->
+                        ) { _, indexed ->
                             val actualIndex = indexed.index
                             ReorderableItem(reorderableState, key = indexed.value.tempId) { isDragging ->
                                 ChecklistItemRow(
@@ -718,7 +711,6 @@ fun NoteEditScreen(
                                     focusRequester = focusRequesters.getOrNull(actualIndex)
                                         ?: FocusRequester(),
                                     indentLevel = indexed.value.indentLevel,
-                                    itemNumber = topLevelNumbers.getOrNull(listIndex),
                                     iconStyle = state.iconStyle,
                                     onIndent = { viewModel.onIndentItem(actualIndex) },
                                     onOutdent = { viewModel.onOutdentItem(actualIndex) },
