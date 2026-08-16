@@ -6,6 +6,12 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Done
 
+- **Swipe-to-delete reveals progressively.** The red deepens with the swipe and the word
+  "Delete" joins the icon only past 40%, instead of the card flashing full red at the first
+  pixel. A gesture you can back out of should look like one.
+- **Search behaves like a search field.** Opens focused with the keyboard up, carries a clear
+  button while there is text, and the Search key dismisses the keyboard — results are live as
+  you type, so that is all it has left to do.
 - **Item numbers dropped.** They renumbered as you used the list: the count ran over the
   *unchecked* items, so ticking one shifted every number below it — measured, ticking item 2
   moved item 3 to 2. Not identifiers, a counter that moves while you shop. Text went to 59%
@@ -67,25 +73,21 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
    verified working today and is not worth regressing for a flourish.
 3. **M3 top bar scroll behaviour.** `enterAlways` on the editor so the bar tucks away while
    a long checklist scrolls; consider `LargeTopAppBar` collapsing on the list.
-4. **Swipe-to-delete reveal.** Icon plus the word "Delete", revealed progressively with
-   swipe fraction, instead of a full-red flash at first pixel.
-5. **M3 SearchBar.** Replace the OutlinedTextField with the proper search component:
-   autofocus on open, a clear (×) button, keyboard search action.
-6. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
+4. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
    haptics in Smart Toolkit's other tools; notes never got them.
-7. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
+5. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
    actual identity pass; keep the monochrome layer for themed icons.
-8. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
+6. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
    beside the date instead of tinting the whole card — calmer list, label still legible.
    Decide on a device with real data; whole-card tint may win.
-9. **Label name inline in the colour picker.** Selecting a colour in the editor shows
+7. **Label name inline in the colour picker.** Selecting a colour in the editor shows
    only a check mark; echo the name ("Green") beside the row.
-10. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
+8. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
     with a dynamic theme; blend them toward the scheme's primary the way `ColorUtils`
     harmonisation does. Low urgency, high subtlety.
-11. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
+9. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
     the body/first item.
-12. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
+10. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
     lot of chrome; moving pickers behind a palette icon would calm the editor. Sketch
     first — it trades discoverability for calm.
 
