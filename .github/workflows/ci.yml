@@ -47,6 +47,10 @@ jobs:
       - name: Android lint
         run: ./gradlew --no-daemon lintDebug
 
+      # Still built, because packaging is a real check — resource merging, manifest
+      # merging and dexing all fail here rather than at compile time. The APK just
+      # is not uploaded: at ~32 MB a run it was the whole of this repo's Actions
+      # storage, and a debug build is a `./gradlew assembleDebug` away locally.
       - name: Assemble debug APK
         run: ./gradlew --no-daemon assembleDebug
 
@@ -58,11 +62,4 @@ jobs:
           path: |
             app/build/reports/
             app/build/test-results/
-          retention-days: 14
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: tickbox-debug
-          path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
