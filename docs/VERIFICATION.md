@@ -153,6 +153,28 @@ back for that to work. Neither half has run.
 - [x] Open a **new** note, type nothing, press back — no empty note is created. *Passed
       2026-08-16 — the note count was unchanged.*
 - [ ] Type, then press back **before** 2 seconds elapse — the note still saves (back forces a save).
+
+      Was probabilistic until #24: the back-press save ran in `viewModelScope`, and `onBack()`
+      pops the back stack, clears the ViewModel and cancels that scope — so the write raced its
+      own teardown, and losing meant Room rolled the transaction back with no crash and no
+      message. It now runs in `AppContainer.applicationScope`, which is tied to the process.
+
+      Two JVM tests pin it (`saveOnBackSurvivesTheViewModelBeingCleared` and the autosave
+      equivalent); both fail against the old code. **What they cannot prove is the real
+      teardown order**, which is why this box is still open.
+
+      To settle it, make the back-press save the *only* write — otherwise an earlier autosave
+      has already persisted the text and the check proves nothing:
+
+      ```bash
+      # throwaway edit, do not commit: NoteEditViewModel.kt
+      #   AUTOSAVE_DELAY_MS    = 600_000L
+      #   AUTOSAVE_MAX_WAIT_MS = 600_000L
+      ```
+
+      Then open a new note, type, and press back immediately. The text must survive. Repeat ten
+      times — the old code would lose it occasionally, not every time, so a single pass means
+      nothing here. Restore both constants afterwards.
 - [x] Repeat that on a **new** note ten times in a row, as fast as you can. Exactly one note should
       appear per attempt. Two is the failure.
 

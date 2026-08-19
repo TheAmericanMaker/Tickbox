@@ -21,6 +21,7 @@ import com.theamericanmaker.tickbox.data.model.Note
 import com.theamericanmaker.tickbox.data.model.NoteImage
 import com.theamericanmaker.tickbox.data.model.NoteType
 import com.theamericanmaker.tickbox.ocr.TextRecognizer
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -85,6 +86,7 @@ class NoteEditViewModel(
     private val preferences: UserPreferencesRepository,
     private val imageStore: NoteImageStore,
     private val textRecognizer: TextRecognizer?,
+    private val applicationScope: CoroutineScope,
 ) : ViewModel() {
 
     private val noteId: Long = savedStateHandle.get<String>("noteId")?.toLongOrNull() ?: -1L
@@ -507,7 +509,10 @@ class NoteEditViewModel(
             val waitedSoFar = System.currentTimeMillis() - dirtySince
             val remainingCeiling = (AUTOSAVE_MAX_WAIT_MS - waitedSoFar).coerceAtLeast(0L)
             delay(minOf(AUTOSAVE_DELAY_MS, remainingCeiling))
-            saveNow()
+            // The wait is cancellable — that is the debounce, and a job cancelled here simply
+            // loses a race it was going to lose anyway. The write is not: once it starts it
+            // has to reach disk even if the screen is being torn down around it.
+            applicationScope.launch { saveNow() }
         }
     }
 
@@ -523,10 +528,17 @@ class NoteEditViewModel(
      * which is what sets the flag. A mutation that skips it would be dropped here instead of
      * being caught by the old unconditional save — so new mutating functions must call it, even
      * when the change looks too small to save.
+     *
+     * Runs in [applicationScope], not `viewModelScope`. The caller saves and navigates in the
+     * same breath, and navigating pops the back stack, which clears this ViewModel and cancels
+     * its scope — so a write launched there would be racing its own teardown, and losing that
+     * race means Room rolls the transaction back and the edit is gone with no crash and no
+     * message. Rare, because the debounce means most of the note is already on disk, but silent
+     * when it happens, which is the kind of bug that gets blamed on the user's memory.
      */
     fun save() {
         if (!isDirty) return
-        viewModelScope.launch { saveNow() }
+        applicationScope.launch { saveNow() }
     }
 
     /**
@@ -639,6 +651,7 @@ class NoteEditViewModel(
                     preferences = container.preferences,
                     imageStore = container.imageStore,
                     textRecognizer = container.textRecognizer,
+                    applicationScope = container.applicationScope,
                 )
             }
         }

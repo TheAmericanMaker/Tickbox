@@ -16,6 +16,9 @@ import com.theamericanmaker.tickbox.data.UserPreferencesRepository
 import com.theamericanmaker.tickbox.data.backup.NoteBackupManager
 import com.theamericanmaker.tickbox.ocr.TesseractTextRecognizer
 import com.theamericanmaker.tickbox.ocr.TextRecognizer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -35,6 +38,18 @@ interface AppContainer {
 
     /** Null when this build ships without an OCR engine; the UI hides the affordance. */
     val textRecognizer: TextRecognizer?
+
+    /**
+     * For work that must finish even though the thing that started it is going away.
+     *
+     * A ViewModel's own scope is cancelled when its `NavBackStackEntry` is destroyed, which is
+     * the same moment a back press navigates — so a write launched there races its own teardown.
+     * This scope is tied to the process instead. Use it only for that: anything the user should
+     * still see the effect of after leaving the screen.
+     *
+     * [SupervisorJob] so one failed write cannot take the scope down with it.
+     */
+    val applicationScope: CoroutineScope
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -66,6 +81,9 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val textRecognizer: TextRecognizer? by lazy { TesseractTextRecognizer(context) }
+
+    override val applicationScope: CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
 }
 
 /**

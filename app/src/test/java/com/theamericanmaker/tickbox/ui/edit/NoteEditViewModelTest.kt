@@ -17,8 +17,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -44,6 +49,7 @@ class NoteEditViewModelTest {
     private lateinit var repository: NoteRepository
     private lateinit var preferences: UserPreferencesRepository
     private lateinit var imageStore: NoteImageStore
+    private lateinit var applicationScope: CoroutineScope
 
     @Before
     fun setUp() {
@@ -62,10 +68,14 @@ class NoteEditViewModelTest {
             },
         )
         imageStore = NoteImageStore(context)
+        // Deliberately its own Job, not a child of any ViewModel's — that separation is
+        // the thing under test in `saveOnBackSurvivesTheViewModelBeingCleared`.
+        applicationScope = CoroutineScope(dispatcher + Job())
     }
 
     @After
     fun tearDown() {
+        applicationScope.cancel()
         db.close()
         Dispatchers.resetMain()
     }
@@ -76,6 +86,7 @@ class NoteEditViewModelTest {
         preferences = preferences,
         imageStore = imageStore,
         textRecognizer = null,
+        applicationScope = applicationScope,
     )
 
     @Test
@@ -226,4 +237,50 @@ class NoteEditViewModelTest {
         val texts = vm.uiState.value.checklistItems.map { it.text }.filter { it.isNotBlank() }
         assertEquals(listOf("Buy milk", "Get eggs", "Call mom"), texts)
     }
+
+    /**
+     * Cancelling `viewModelScope` is exactly what popping the back stack does, and the back
+     * press saves and navigates in the same breath. While the write lived in that scope it was
+     * racing its own teardown; losing meant Room rolled the transaction back, silently.
+     *
+     * Written to fail against the old code: with the save in `viewModelScope`, the launched
+     * coroutine is still queued on the test dispatcher when the cancel lands, so it never runs
+     * and the note is never inserted.
+     */
+    @Test
+    fun saveOnBackSurvivesTheViewModelBeingCleared() = runTest(dispatcher) {
+        val vm = newChecklistViewModel()
+        vm.onTitleChange("typed just before back")
+
+        vm.save()
+        vm.viewModelScope.cancel()
+        advanceUntilIdle()
+
+        val saved = repository.getAllNotesWithItems()
+        assertEquals(1, saved.size)
+        assertEquals("typed just before back", saved.single().title)
+    }
+
+    /**
+     * The other half: the debounce timer stays in `viewModelScope` so rapid edits still
+     * reschedule it, but once it fires the write is handed to the application scope. Advancing
+     * past the debounce lets the timer fire and dispatch, and the cancel then arrives while the
+     * write is still queued — the same order the real teardown produces.
+     */
+    @Test
+    fun autosaveWriteSurvivesTheViewModelBeingClearedAfterTheTimerFires() = runTest(dispatcher) {
+        val vm = newChecklistViewModel()
+        vm.onChecklistItemTextChange(0, "milk")
+
+        advanceTimeBy(AUTOSAVE_DEBOUNCE_AND_A_BIT_MS)
+        vm.viewModelScope.cancel()
+        advanceUntilIdle()
+
+        val saved = repository.getAllNotesWithItems()
+        assertEquals(1, saved.size)
+        assertEquals(listOf("milk"), saved.single().checklistItems.map { it.text })
+    }
 }
+
+/** Past `NoteEditViewModel`'s 2 s debounce, which is private to it. */
+private const val AUTOSAVE_DEBOUNCE_AND_A_BIT_MS = 2_500L
