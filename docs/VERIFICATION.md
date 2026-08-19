@@ -152,7 +152,46 @@ back for that to work. Neither half has run.
 - [x] Type a title only, press back, reopen the list — the note is saved. *Passed 2026-08-16.*
 - [x] Open a **new** note, type nothing, press back — no empty note is created. *Passed
       2026-08-16 — the note count was unchanged.*
-- [ ] Type, then press back **before** 2 seconds elapse — the note still saves (back forces a save).
+- [x] Type, then press back **before** 2 seconds elapse — the note still saves (back forces a save).
+      *Ran 2026-08-19 on a Galaxy Z Fold 5 (Android 14), 10 attempts: 10/10 saved.*
+
+      Fixed in #24. The back-press save ran in `viewModelScope`, and `onBack()` pops the back
+      stack, which clears the ViewModel and cancels that scope — so the write raced its own
+      teardown, and losing meant Room rolled the transaction back with no crash and no message.
+      It now runs in `AppContainer.applicationScope`, tied to the process.
+
+      **The obvious version of this test cannot detect the bug.** With the real write speed the
+      *unfixed* build also saved 10/10. Navigation Compose destroys the back-stack entry only
+      after the exit transition, so the save gets a few hundred milliseconds of grace — a
+      throwaway `delay(500)` inside `saveNow` still passed 5/5 unfixed. The race needs the write
+      to outlast the exit animation, which is why it was never observed in use.
+
+      To see it at all, widen it. Two throwaway edits to `NoteEditViewModel.kt`, neither
+      committed:
+
+      ```kotlin
+      AUTOSAVE_DELAY_MS    = 600_000L   // so the back-press save is the ONLY write
+      AUTOSAVE_MAX_WAIT_MS = 600_000L
+      delay(3_000)                      // first line of saveNow(), past any exit animation
+      ```
+
+      | build | write | persisted |
+      | --- | --- | --- |
+      | `viewModelScope` (pre-#24) | 3 s | **0/5** |
+      | `applicationScope` (#24) | 3 s | **5/5** |
+
+      Two things to copy if you repeat this. **Judge from the database, not the screen** — the
+      list is a `LazyColumn` that keeps its scroll position, so a note saved at the top reads as
+      missing and the first run of this looked like 0/10 when all ten had in fact saved:
+
+      ```bash
+      adb shell "run-as com.theamericanmaker.tickbox.debug cat databases/tickbox.db" > tickbox.db
+      # plus -wal and -shm, into a directory you emptied first — a stale -shm poisons WAL replay
+      ```
+
+      And keep a negative control: type, wait past the debounce, then `am force-stop` without
+      pressing back. That note must **not** appear. Without it, a harness that silently fails to
+      type looks exactly like a passing test.
 - [x] Repeat that on a **new** note ten times in a row, as fast as you can. Exactly one note should
       appear per attempt. Two is the failure.
 
