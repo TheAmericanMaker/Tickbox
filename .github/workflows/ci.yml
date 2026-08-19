@@ -25,7 +25,7 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-disabled: true
       - name: ktlint (advisory)
@@ -48,7 +48,7 @@ jobs:
       # Minutes are unmetered on a public repo, so trading build time for cache is
       # free here. If CI ever feels too slow, `cache-cleanup: on-success` is the
       # middle ground — it shrinks entries rather than removing them.
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-disabled: true
 
