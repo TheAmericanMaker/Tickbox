@@ -29,6 +29,7 @@ apply on a normal machine: build and run locally, and prefer doing so over trust
 ```bash
 ./gradlew assembleWithOcrDebug   # the full app  -> app/build/outputs/apk/withOcr/debug/
 ./gradlew assembleNoOcrDebug     # the small app -> app/build/outputs/apk/noOcr/debug/
+./gradlew installWithOcrDebug    # picks the right ABI for the attached device
 ./gradlew testWithOcrDebugUnitTest testNoOcrDebugUnitTest   # JVM only, no emulator
 ./gradlew lintWithOcrDebug lintNoOcrDebug                   # Android lint
 ./gradlew ktlintCheck            # style (advisory in CI until an initial ktlintFormat commit)
@@ -171,6 +172,27 @@ These are decisions, not oversights. Check the plan before "fixing" them.
   agree: whether an engine exists, and whether the UI may advertise one. Keeping them in one object
   is deliberate — split them and you eventually ship a build that hides the button but carries
   31 MB, or one that offers extraction it cannot do.
+- **One APK per ABI, and the `versionCode`s must differ** (#30). Tesseract's native libraries are
+  ~27 MB across four architectures and R8 cannot shrink them, so a single APK made every phone
+  carry three it cannot run. Measured on release builds:
+
+  | | universal | arm64-v8a |
+  | --- | --- | --- |
+  | `withOcr` | 31.0 MB | **10.5 MB** |
+  | `noOcr` | 1.5 MB | 1.4 MB |
+
+  `noOcr` barely moves, because it has almost no native code — which is why only its universal
+  APK is published.
+
+  The `versionCode` override in `androidComponents.onVariants` is load-bearing, not tidiness.
+  Splits that share a code are indistinguishable to F-Droid and to the updater, and the order
+  matters too: a device installs the highest code it can run, so `arm64-v8a` (4001) has to
+  outrank `armeabi-v7a` (1001) or a modern phone takes the 32-bit build. The universal APK keeps
+  the base code so anything more specific wins.
+
+  `x86`/`x86_64` are built but not published — emulator-only for a phone app. They are built
+  rather than dropped because this project has never been run on an emulator, and that is
+  precisely where CI cannot help.
 - **Drag-to-reorder works by key, not index.** The checklist renders as two filtered sections, so
   display position ≠ list index; `onReorderChecklistItems` takes tempIds for that reason. Don't
   "simplify" it back to indices — that reintroduces the bug that kept this feature out of the
