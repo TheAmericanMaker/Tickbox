@@ -26,6 +26,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
       - name: ktlint (advisory)
         run: ./gradlew --no-daemon ktlintCheck
 
@@ -39,7 +41,16 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # Actions cache is capped at 10 GB per repository and this build filled 8 GB
+      # of it: gradle/actions splits Gradle home into artifact bundles, and the
+      # dependencies and transforms bundles alone run ~400-500 MB *each*, with a
+      # fresh entry per distinct dependency set. Dependabot churn multiplies that.
+      # Minutes are unmetered on a public repo, so trading build time for cache is
+      # free here. If CI ever feels too slow, `cache-cleanup: on-success` is the
+      # middle ground — it shrinks entries rather than removing them.
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
 
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
@@ -49,8 +60,8 @@ jobs:
 
       # Still built, because packaging is a real check — resource merging, manifest
       # merging and dexing all fail here rather than at compile time. The APK just
-      # is not uploaded: at ~32 MB a run it was the whole of this repo's Actions
-      # storage, and a debug build is a `./gradlew assembleDebug` away locally.
+      # is not uploaded: 48 copies at ~31 MB had accumulated and none was ever
+      # downloaded, and a debug build is a `./gradlew assembleDebug` away locally.
       - name: Assemble debug APK
         run: ./gradlew --no-daemon assembleDebug
 
