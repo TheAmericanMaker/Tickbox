@@ -476,7 +476,7 @@ record which parts that statement actually settles and which are still individua
       prompt for it at all. Dictation working regardless is what validates the removal.*
 
       ```bash
-      aapt2 dump permissions app/build/outputs/apk/debug/app-debug.apk
+      aapt2 dump permissions app/build/outputs/apk/withOcr/debug/app-withOcr-universal-debug.apk
       ```
 - [ ] Dictate into a text note with the caret mid-text — the text inserts at the caret, not the end.
       *Not separately exercised; needs the caret deliberately placed mid-text.*
@@ -515,7 +515,7 @@ record which parts that statement actually settles and which are still individua
 - [x] `./gradlew assembleRelease` succeeds. It is minified with `isShrinkResources = true`, and
       signed only when a keystore is configured.
       *Ran 2026-08-15 locally: succeeds in 47 s. With no `keystore.properties` present it produced
-      `app-release-unsigned.apk` rather than failing, which is the intended F-Droid/contributor
+      `app-withOcr-universal-release-unsigned.apk` rather than failing, which is the intended F-Droid/contributor
       fallback. **31 MB** release, **47 MB** debug — Tesseract contributes ~30 MB of native libs
       across four ABIs plus a 4 MB model, and R8 does not shrink native code. `x86`/`x86_64` are
       emulator-only for a phone app; an ABI split would roughly halve the download.*
@@ -523,7 +523,7 @@ record which parts that statement actually settles and which are still individua
       classes up by name, so a rename breaks OCR in release only:
 
       ```bash
-      for c in com/googlecode/tesseract/android/TessBaseAPI com/googlecode/leptonica/android/Pix com/googlecode/leptonica/android/ReadFile; do printf "%-52s %s\n" "$c" "$(unzip -p app/build/outputs/apk/release/app-release-unsigned.apk classes.dex | grep -qa "L$c;" && echo PRESENT || echo MISSING)"; done
+      for c in com/googlecode/tesseract/android/TessBaseAPI com/googlecode/leptonica/android/Pix com/googlecode/leptonica/android/ReadFile; do printf "%-52s %s\n" "$c" "$(unzip -p app/build/outputs/apk/withOcr/release/app-withOcr-universal-release-unsigned.apk classes.dex | grep -qa "L$c;" && echo PRESENT || echo MISSING)"; done
       ```
 
       *Ran 2026-08-15: all three present — the `-keep` rules in `proguard-rules.pro` hold. This is
@@ -532,7 +532,7 @@ record which parts that statement actually settles and which are still individua
 - [x] **No device needed.** Confirm the privacy claim against the built artifact, not the source:
 
       ```bash
-      aapt2 dump permissions app/build/outputs/apk/release/app-release-unsigned.apk
+      aapt2 dump permissions app/build/outputs/apk/withOcr/release/app-withOcr-universal-release-unsigned.apk
       ```
 
       *Ran 2026-08-15: the merged release manifest declares only `android.permission.CAMERA` (plus
@@ -544,7 +544,7 @@ record which parts that statement actually settles and which are still individua
       one of these should print `ok`:
 
       ```bash
-      for s in TEXT CHECKLIST CHECKBOX CIRCLE STAR HEART SQUARE SYSTEM LIGHT DARK; do printf "%-10s %s\n" "$s" "$(unzip -p app/build/outputs/apk/release/app-release-unsigned.apk classes.dex | strings -a | grep -qF "$s" && echo ok || echo MISSING)"; done
+      for s in TEXT CHECKLIST CHECKBOX CIRCLE STAR HEART SQUARE SYSTEM LIGHT DARK; do printf "%-10s %s\n" "$s" "$(unzip -p app/build/outputs/apk/withOcr/release/app-withOcr-universal-release-unsigned.apk classes.dex | strings -a | grep -qF "$s" && echo ok || echo MISSING)"; done
       ```
 
       **Do not use `mapping.txt` for this.** It will show `NoteType -> g4.e`, which looks like a
@@ -638,7 +638,7 @@ record which parts that statement actually settles and which are still individua
 
       ```bash
       apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android \
-        --ks-key-alias androiddebugkey --out signed.apk app/build/outputs/apk/release/app-release-unsigned.apk
+        --ks-key-alias androiddebugkey --out signed.apk app/build/outputs/apk/withOcr/release/app-withOcr-universal-release-unsigned.apk
       ```
 
       It installs alongside the debug build under its own applicationId, so it starts with an empty

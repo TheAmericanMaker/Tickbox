@@ -43,7 +43,8 @@ cd Tickbox
 ./gradlew assembleDebug
 ```
 
-The APK lands in `app/build/outputs/apk/debug/`. If Gradle fails with a bare version
+The APKs land in `app/build/outputs/apk/<flavour>/debug/`, one per ABI plus a
+`universal` one that installs anywhere. If Gradle fails with a bare version
 string like `25.0.4`, your Gradle daemon is running on a too-new JVM — see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 

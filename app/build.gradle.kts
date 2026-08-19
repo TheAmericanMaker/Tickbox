@@ -1,3 +1,4 @@
+import com.android.build.api.variant.FilterConfiguration
 import java.util.Properties
 
 plugins {
@@ -25,6 +26,22 @@ val releaseStoreFile: File? = signingValue("storeFile", "KEYSTORE_FILE")
     ?.let { rootProject.file(it) }
     ?.takeIf { it.exists() }
 
+/** The one place the version number is written. Per-ABI codes are derived from it below. */
+val baseVersionCode = 1
+
+/**
+ * Ordered worst-to-best, and the order is what matters: a device offered several APKs installs
+ * the highest `versionCode` it can run, so `arm64-v8a` has to outrank `armeabi-v7a` or a modern
+ * phone would take the 32-bit build. Identical codes are worse still — the store, F-Droid and
+ * the updater cannot tell the APKs apart at all.
+ */
+val abiVersionOffsets = mapOf(
+    "armeabi-v7a" to 1,
+    "x86" to 2,
+    "x86_64" to 3,
+    "arm64-v8a" to 4,
+)
+
 android {
     namespace = "com.theamericanmaker.tickbox"
     compileSdk = 35
@@ -33,7 +50,7 @@ android {
         applicationId = "com.theamericanmaker.tickbox"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = baseVersionCode
         versionName = "1.0.0"
 
         ksp {
@@ -53,6 +70,22 @@ android {
     productFlavors {
         create("withOcr") { dimension = "ocr" }
         create("noOcr") { dimension = "ocr" }
+    }
+
+    // One APK per architecture. Tesseract's native libraries are ~27 MB across the four ABIs
+    // and R8 cannot shrink them, so a single APK makes every phone carry three architectures it
+    // cannot run. `x86`/`x86_64` are emulator-only for a phone, but they are built rather than
+    // dropped — this project has never been run on an emulator, and that is exactly the
+    // environment where CI cannot help. See #30.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            // Kept so there is still one APK that installs anywhere, for the release page and
+            // for anyone who does not know or care what their phone runs.
+            isUniversalApk = true
+        }
     }
 
     signingConfigs {
@@ -94,6 +127,21 @@ android {
     }
     testOptions {
         unitTests.isIncludeAndroidResources = true
+    }
+}
+
+// Distinct versionCode per split. Without this every APK claims the same version and the
+// update mechanism cannot distinguish them, which ships an update people cannot install.
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            val abi = output.filters
+                .find { it.filterType == FilterConfiguration.FilterType.ABI }
+                ?.identifier
+            // No ABI filter means the universal APK: it keeps the base code, below every split,
+            // so a device that can run a split prefers it.
+            output.versionCode.set((abiVersionOffsets[abi] ?: 0) * 1000 + baseVersionCode)
+        }
     }
 }
 

@@ -50,14 +50,21 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleWithOcrRelease assembleNoOcrRelease
 
-      # Two APKs now, so each is named explicitly rather than globbed onto one filename.
-      # The old loop renamed every match to tickbox-$TAG.apk and would silently have kept
-      # whichever landed last.
+      # Each APK is named explicitly. Globbing would now match five files per flavour — the
+      # ABI splits — and `cp a b c dest.apk` fails outright rather than picking one.
+      #
+      # Not every built APK is published. x86/x86_64 are emulator-only for a phone app, and
+      # splitting noOcr saves ~100 KB because it has almost no native code, so only its
+      # universal APK is worth offering. Anyone who needs the rest can build them.
       - name: Collect artifacts and checksums
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/withOcr/release/*.apk "dist/tickbox-$GITHUB_REF_NAME.apk"
-          cp app/build/outputs/apk/noOcr/release/*.apk "dist/tickbox-$GITHUB_REF_NAME-noocr.apk"
+          W=app/build/outputs/apk/withOcr/release
+          N=app/build/outputs/apk/noOcr/release
+          cp "$W/app-withOcr-universal-release.apk"    "dist/tickbox-$GITHUB_REF_NAME.apk"
+          cp "$W/app-withOcr-arm64-v8a-release.apk"    "dist/tickbox-$GITHUB_REF_NAME-arm64-v8a.apk"
+          cp "$W/app-withOcr-armeabi-v7a-release.apk"  "dist/tickbox-$GITHUB_REF_NAME-armeabi-v7a.apk"
+          cp "$N/app-noOcr-universal-release.apk"      "dist/tickbox-$GITHUB_REF_NAME-noocr.apk"
           cd dist
           sha256sum *.apk > SHA256SUMS.txt
 
