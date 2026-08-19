@@ -38,6 +38,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -82,13 +84,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -110,6 +117,9 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 private const val DICTATION_TARGET_TITLE = "title"
 private const val DICTATION_TARGET_CONTENT = "content"
 
+/** Below this a list is too short for sub-items to be worth mentioning. */
+private const val INDENT_HINT_MIN_ITEMS = 4
+
 /** One beat for a newly added row to compose and lay out before it is measured or focused. */
 private const val FOCUS_LAYOUT_SETTLE_MS = 100L
 
@@ -120,6 +130,7 @@ fun NoteEditScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val ocrHintShown by viewModel.ocrHintShown.collectAsStateWithLifecycle()
+    val indentHintShown by viewModel.indentHintShown.collectAsStateWithLifecycle()
     val dictationAcknowledged by viewModel.dictationDisclosureAcknowledged.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -143,12 +154,19 @@ fun NoteEditScreen(
     var contentFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
+    // Only meaningful for a checklist: converting the other way loses nothing.
+    val tickedItemCount = if (state.type == NoteType.CHECKLIST) state.checklistItems.count { it.isChecked } else 0
+
     val lazyListState = rememberLazyListState()
     // Keys, not indices: the checklist displays as two filtered sections, so a row's
     // on-screen position is not its index in the ViewModel's list. tempId is the one
     // identity both sides agree on.
+    val haptics = LocalHapticFeedback.current
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         viewModel.onReorderChecklistItems(from.key, to.key)
+        // One tick per row crossed, which is what makes a drag feel like it is moving something
+        // rather than sliding over it.
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
     val isHeaderCollapsed by remember {
         derivedStateOf {
@@ -177,6 +195,19 @@ fun NoteEditScreen(
         }
     }
 
+    // Told once, and only on a list long enough for sub-items to be worth having. Indenting is
+    // a gesture with nothing to see, so the alternative to saying it is nobody finding it.
+    LaunchedEffect(state.type, state.checklistItems.size, indentHintShown) {
+        if (state.type == NoteType.CHECKLIST && !indentHintShown &&
+            state.checklistItems.count { it.text.isNotBlank() } >= INDENT_HINT_MIN_ITEMS
+        ) {
+            // Show first, mark second. Marking flips indentHintShown, which is a key of this
+            // effect, so doing it first cancels the coroutine before the snackbar ever appears.
+            snackbarHostState.showSnackbar("Tip: drag an item's tick box sideways to indent it")
+            viewModel.dismissIndentHint()
+        }
+    }
+
     LaunchedEffect(state.images.size, ocrHintShown, viewModel.ocrAvailable) {
         if (viewModel.ocrAvailable && state.images.isNotEmpty() && !ocrHintShown) {
             snackbarHostState.showSnackbar("Tip: tap an image to extract text from it")
@@ -184,6 +215,7 @@ fun NoteEditScreen(
         }
     }
 
+    val contentFocusRequester = remember { FocusRequester() }
     val focusRequesters = remember { mutableStateListOf<FocusRequester>() }
     LaunchedEffect(state.checklistItems.size) {
         while (focusRequesters.size < state.checklistItems.size) focusRequesters.add(FocusRequester())
@@ -398,7 +430,24 @@ fun NoteEditScreen(
                     onBack()
                 },
                 actions = {
-                    IconButton(onClick = viewModel::onToggleType) {
+                    IconButton(
+                        onClick = {
+                            // No confirmation any more. The conversion keeps the words and the
+                            // indentation, and returns the ticks if you come straight back, so
+                            // there is nothing to confirm at the moment it happens. What can
+                            // still cost the ticks is editing the body afterwards — which is a
+                            // later action, and not something a dialog here could speak to.
+                            val hadTicks = tickedItemCount > 0
+                            viewModel.onToggleType()
+                            if (hadTicks) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        "Ticks come back if you switch straight back without editing",
+                                    )
+                                }
+                            }
+                        },
+                    ) {
                         Icon(
                             imageVector = if (state.type == NoteType.TEXT) {
                                 Icons.Filled.Checklist
@@ -531,6 +580,23 @@ fun NoteEditScreen(
                             ),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                imeAction = ImeAction.Next,
+                            ),
+                            // Next goes on into the note rather than dismissing the keyboard, which
+                            // is what you want after typing a title and nothing else.
+                            keyboardActions = KeyboardActions(
+                                onNext = {
+                                    runCatching {
+                                        if (state.type == NoteType.CHECKLIST) {
+                                            focusRequesters.firstOrNull()?.requestFocus()
+                                        } else {
+                                            contentFocusRequester.requestFocus()
+                                        }
+                                    }
+                                },
+                            ),
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(vertical = 12.dp),
@@ -624,11 +690,12 @@ fun NoteEditScreen(
                                 // Keeps every line clear of the floating mic, rather than
                                 // letting long text run underneath it.
                                 .padding(end = 48.dp)
-                                .onFocusChanged { contentFocused = it.isFocused },
+                                .onFocusChanged { contentFocused = it.isFocused }
+                                .focusRequester(contentFocusRequester),
                             decorationBox = { innerTextField ->
                                 if (contentFieldValue.text.isEmpty()) {
                                     Text(
-                                        text = "Write something…",
+                                        text = "Write something\u2026",
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -657,13 +724,6 @@ fun NoteEditScreen(
                     val uncheckedItems = state.checklistItems.withIndex().filter { !it.value.isChecked }
                     val checkedItems = state.checklistItems.withIndex().filter { it.value.isChecked }
 
-                    val topLevelNumbers = remember(uncheckedItems) {
-                        var counter = 0
-                        uncheckedItems.map { indexed ->
-                            if (indexed.value.indentLevel == 0) ++counter else null
-                        }
-                    }
-
                     LazyColumn(
                         state = lazyListState,
                         modifier = Modifier.weight(1f),
@@ -672,7 +732,7 @@ fun NoteEditScreen(
                         itemsIndexed(
                             uncheckedItems,
                             key = { _, indexed -> indexed.value.tempId },
-                        ) { listIndex, indexed ->
+                        ) { _, indexed ->
                             val actualIndex = indexed.index
                             ReorderableItem(reorderableState, key = indexed.value.tempId) { isDragging ->
                                 ChecklistItemRow(
@@ -688,7 +748,6 @@ fun NoteEditScreen(
                                     focusRequester = focusRequesters.getOrNull(actualIndex)
                                         ?: FocusRequester(),
                                     indentLevel = indexed.value.indentLevel,
-                                    itemNumber = topLevelNumbers.getOrNull(listIndex),
                                     iconStyle = state.iconStyle,
                                     onIndent = { viewModel.onIndentItem(actualIndex) },
                                     onOutdent = { viewModel.onOutdentItem(actualIndex) },
@@ -821,6 +880,7 @@ private fun DictationDisclosureDialog(onDismiss: () -> Unit, onConfirm: () -> Un
 
 @Composable
 private fun ColorLabelPicker(selected: String?, onSelect: (String?) -> Unit) {
+    Column {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -876,6 +936,17 @@ private fun ColorLabelPicker(selected: String?, onSelect: (String?) -> Unit) {
                 }
             }
         }
+    }
+    // A tick on a swatch says one is chosen but not which, and the swatches scroll. Naming it
+    // costs a line only when a colour is actually set.
+    if (selected != null) {
+        Text(
+            text = selected,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+        )
+    }
     }
 }
 

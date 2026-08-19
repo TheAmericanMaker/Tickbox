@@ -24,12 +24,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notes
@@ -72,12 +76,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -95,11 +104,15 @@ import java.time.format.DateTimeFormatter
 
 private const val BACKUP_FILE_NAME = "tickbox_notes_backup.zip"
 
+/** Past this much of the swipe, the gesture reads as meant rather than exploratory. */
+private const val DELETE_COMMIT_FRACTION = 0.4f
+
 @Composable
 fun NoteListScreen(
     onNoteClick: (Long) -> Unit,
     onNewNote: () -> Unit,
     onNewChecklist: () -> Unit,
+    onOpenHelp: () -> Unit,
     viewModel: NoteListViewModel = viewModel(factory = NoteListViewModel.Factory),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -145,6 +158,7 @@ fun NoteListScreen(
         onExport = { exportLauncher.launch(BACKUP_FILE_NAME) },
         onImport = { importLauncher.launch(arrayOf("application/zip")) },
         onThemeModeChange = viewModel::setThemeMode,
+        onOpenHelp = onOpenHelp,
     )
 }
 
@@ -169,6 +183,7 @@ fun NoteListContent(
     onExport: () -> Unit,
     onImport: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onOpenHelp: () -> Unit,
 ) {
     var showSearch by rememberSaveable { mutableStateOf(false) }
     var searchText by rememberSaveable { mutableStateOf("") }
@@ -246,6 +261,17 @@ fun NoteListContent(
                                 onImport()
                             },
                         )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Help & about") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.HelpOutline, contentDescription = null)
+                            },
+                            onClick = {
+                                showMenu = false
+                                onOpenHelp()
+                            },
+                        )
                     }
                 },
             )
@@ -294,6 +320,13 @@ fun NoteListContent(
                 .padding(padding),
         ) {
             AnimatedVisibility(visible = showSearch) {
+                val searchFocus = remember { FocusRequester() }
+                val keyboard = LocalSoftwareKeyboardController.current
+                // Opening the field is already the intent to type in it, so take focus and raise
+                // the keyboard rather than making the magnifier a two-tap affair.
+                LaunchedEffect(Unit) {
+                    runCatching { searchFocus.requestFocus() }
+                }
                 OutlinedTextField(
                     value = searchText,
                     onValueChange = { text ->
@@ -302,10 +335,28 @@ fun NoteListContent(
                     },
                     label = { Text("Search notes") },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchText.isNotEmpty()) {
+                            IconButton(
+                                onClick = {
+                                    searchText = ""
+                                    onSearchQueryChange("")
+                                    runCatching { searchFocus.requestFocus() }
+                                },
+                            ) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .focusRequester(searchFocus),
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    // Searching is live as you type, so the Search key has nothing left to do
+                    // but get the keyboard out of the way of the results.
+                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
                 )
             }
 
@@ -471,19 +522,46 @@ private fun SwipeToDismissNoteCard(
         // around every card at rest, with no swipe in progress.
         modifier = modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         backgroundContent = {
+            // Reveal in proportion to the swipe, rather than switching to full red at the first
+            // pixel. A swipe that has barely started should look barely started — the point of
+            // the gesture is that you can see how far you are from committing to it, and back
+            // out. `progress` runs 0..1 toward the threshold.
+            val swipeFraction = dismissState.progress.coerceIn(0f, 1f)
+            val committed = swipeFraction > DELETE_COMMIT_FRACTION
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(CardDefaults.shape)
-                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .background(
+                        MaterialTheme.colorScheme.errorContainer.copy(
+                            // Never fully transparent: a hint of colour from the start says
+                            // which way this is going.
+                            alpha = (0.25f + swipeFraction * 0.75f).coerceAtMost(1f),
+                        ),
+                    )
                     .padding(horizontal = 24.dp),
                 contentAlignment = Alignment.CenterEnd,
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.alpha(swipeFraction.coerceAtLeast(0.4f)),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                    // The word only once the swipe means it. Earlier it is noise on a card the
+                    // finger is still covering.
+                    AnimatedVisibility(visible = committed) {
+                        Text(
+                            "Delete",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                }
             }
         },
         enableDismissFromStartToEnd = false,

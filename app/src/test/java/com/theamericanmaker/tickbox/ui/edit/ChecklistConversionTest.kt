@@ -32,7 +32,9 @@ class ChecklistConversionTest {
                 ChecklistItemUiState(text = "Eggs", isChecked = true, indentLevel = 1),
             ),
         )
-        assertEquals("Milk\nEggs", text)
+        // Indentation is now carried across as leading spaces, so it survives the round trip.
+        // Checked state still is not — the note body holds no tick marks by design.
+        assertEquals("Milk\n  Eggs", text)
     }
 
     @Test

@@ -19,6 +19,46 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
   that was never useful, while taking roughly a third of the editor and never scrolling out of the
   way (#26, resolved by this). Dictation already beats tapping a chip and works for words no map
   contains.
+- **Haptics.** A tick when an item is checked and one per row crossed while dragging, joining
+  the one the indent gesture already had.
+- **Colour label names itself.** A tick on a swatch says one is chosen but not which, and the
+  swatches scroll; the name now appears under the row when a colour is set.
+- **Title field IME.** Sentence capitalisation, and Next moves into the note — the first item
+  on a checklist, the body on a note — rather than at whatever sits geometrically below,
+  which was the dictation button.
+- **Smaller remove button on image thumbnails.** It was drawing a 42dp disc that covered 52%
+  of the 80dp thumbnail and spilled past its edges — `IconButton` enforces its own minimum
+  interactive size and paints the background at *that* size, so the requested 20dp was
+  ignored. Drawn explicitly now: 22dp visible, 48dp touch target.
+- **Swipe-to-delete reveals progressively.** The red deepens with the swipe and the word
+  "Delete" joins the icon only past 40%, instead of the card flashing full red at the first
+  pixel. A gesture you can back out of should look like one.
+- **Search behaves like a search field.** Opens focused with the keyboard up, carries a clear
+  button while there is text, and the Search key dismisses the keyboard — results are live as
+  you type, so that is all it has left to do.
+- **Item numbers dropped.** They renumbered as you used the list: the count ran over the
+  *unchecked* items, so ticking one shifted every number below it — measured, ticking item 2
+  moved item 3 to 2. Not identifiers, a counter that moves while you shop. Text went to 59%
+  of the row width, from 39% before this pass.
+- **One-time hint for the indent gesture.** A snackbar the first time a checklist of four or
+  more items is opened, using the same stored-flag pattern as the OCR tip.
+- **Help & about screen**, from the list overflow. One screen rather than two entries: the
+  same page answers "how do I indent" and "where is the source". The how-to half is
+  load-bearing rather than decorative — indent-by-drag and reorder-by-grip are gestures with
+  no visible affordance, and this is the only place either is written down for the person
+  using the app. The about half carries version, licence, source and author links, and the
+  no-network claim.
+- **Readable checklist rows.** Item text wraps instead of scrolling, indent moved to a gesture
+  on the tick box, and delete shows only on the row being edited. The field used to be `singleLine`, which scrolls to
+  keep the caret in view — so long items displayed their *tail*, and a list read as
+  "todos completed" / "via run_bench.sh" with the start of every line off the left edge.
+  Text went from 39% of the row width to 57%.
+- **Checklist→note round trip keeps indentation and ticks.** Indentation is written as two
+  leading spaces and parsed back; ticks are remembered and restored if the body comes back
+  unedited. The blocking confirmation this replaced is gone — the conversion is no longer
+  destructive at the moment it happens, and a dialog on a lossless action only teaches people
+  to dismiss dialogs. A snackbar states the rule instead, and only when something is ticked.
+  Pasting a markdown checklist in from another app now works too.
 - **Appearance setting.** Light / Dark / System, in the list screen's overflow above
   Export/Import. The preference was stored and applied from the start but nothing ever
   wrote it, so the setting existed with no way to reach it. Selection applies live with
@@ -45,17 +85,13 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Next up (ranked)
 
-1. **48dp touch targets** for indent/outdent (24dp today), item delete (32dp), and the drag
-   handle (measured 17×28dp on a Fold cover display). Half-size targets are the single most
-   felt roughness on a real device.
+1. **48dp touch targets** for item delete (32dp) and the drag handle (measured 17×28dp on a
+   Fold cover display). Half-size targets are the single most felt roughness on a real device.
 
-   Not a matter of removing the `.size()` overrides: `IconButton` already reserves 48dp
-   until something shrinks it, so restoring the default would put handle + outdent + indent
-   + checkbox at 192dp of controls on a ~344dp-wide screen and squeeze the text field to
-   nothing. The vertical axis is free — rows already measure ~48dp tall — so height costs
-   nothing and width is the whole decision. It probably needs the indent controls to stop
-   being permanently visible on every row, which is a design change rather than a sizing
-   one. **Decide on a device with a real list.**
+   Much cheaper than it was. The blocker used to be width, and the indent buttons are now gone
+   entirely — replaced by a gesture — while delete only shows on the focused row. The vertical
+   axis was always free, since rows already measure ~48dp tall. **Decide on a device with a
+   real list.**
 2. **Completion micro-animation — half done.** `animateItem()` is on the checked rows, so an
    item animates *into* the checked section instead of teleporting. The unchecked half is
    missing: those rows live inside `ReorderableItem`, where `animateItem` and the drag
@@ -64,25 +100,15 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
    verified working today and is not worth regressing for a flourish.
 3. **M3 top bar scroll behaviour.** `enterAlways` on the editor so the bar tucks away while
    a long checklist scrolls; consider `LargeTopAppBar` collapsing on the list.
-4. **Swipe-to-delete reveal.** Icon plus the word "Delete", revealed progressively with
-   swipe fraction, instead of a full-red flash at first pixel.
-5. **M3 SearchBar.** Replace the OutlinedTextField with the proper search component:
-   autofocus on open, a clear (×) button, keyboard search action.
-6. **Haptics.** Subtle ticks on drag pick-up/drop and on checking an item. The app had
-   haptics in Smart Toolkit's other tools; notes never got them.
-7. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
+4. **Real launcher icon.** Current art is a placeholder tick drawn in this repo. Needs an
    actual identity pass; keep the monochrome layer for themed icons.
-8. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
+5. **Colour label as accent, not wash.** Try the label as a leading edge bar or a dot
    beside the date instead of tinting the whole card — calmer list, label still legible.
    Decide on a device with real data; whole-card tint may win.
-9. **Label name inline in the colour picker.** Selecting a colour in the editor shows
-   only a check mark; echo the name ("Green") beside the row.
-10. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
+6. **Harmonise label colours with Material You.** The 10 fixed label colours can clash
     with a dynamic theme; blend them toward the scheme's primary the way `ColorUtils`
     harmonisation does. Low urgency, high subtlety.
-11. **Title field ime polish.** Auto-capitalise the title field, "next" action moves into
-    the body/first item.
-12. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
+7. **Editor colour/style pickers into a bottom sheet.** The collapsing header carries a
     lot of chrome; moving pickers behind a palette icon would calm the editor. Sketch
     first — it trades discoverability for calm.
 

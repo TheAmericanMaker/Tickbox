@@ -26,6 +26,9 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
 
     val ocrHintShown: Flow<Boolean> = dataStore.data.map { it[OCR_HINT_SHOWN] ?: false }
 
+    /** Indenting is a gesture with no visible affordance, so it gets told to you once. */
+    val indentHintShown: Flow<Boolean> = dataStore.data.map { it[INDENT_HINT_SHOWN] ?: false }
+
     val dictationDisclosureAcknowledged: Flow<Boolean> =
         dataStore.data.map { it[DICTATION_DISCLOSURE_ACKNOWLEDGED] ?: false }
 
@@ -35,6 +38,10 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setOcrHintShown() {
         dataStore.edit { it[OCR_HINT_SHOWN] = true }
+    }
+
+    suspend fun setIndentHintShown() {
+        dataStore.edit { it[INDENT_HINT_SHOWN] = true }
     }
 
     suspend fun acknowledgeDictationDisclosure() {
@@ -51,6 +58,7 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
 
     private companion object {
         val OCR_HINT_SHOWN = booleanPreferencesKey("ocr_hint_shown")
+        val INDENT_HINT_SHOWN = booleanPreferencesKey("indent_hint_shown")
         val DICTATION_DISCLOSURE_ACKNOWLEDGED = booleanPreferencesKey("dictation_disclosure_acknowledged")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")

@@ -149,10 +149,11 @@ back for that to work. Neither half has run.
 
 ## C. Autosave and back behaviour
 
-- [ ] Type a title only, press back, reopen the list — the note is saved.
-- [ ] Open a **new** note, type nothing, press back — no empty note is created.
+- [x] Type a title only, press back, reopen the list — the note is saved. *Passed 2026-08-16.*
+- [x] Open a **new** note, type nothing, press back — no empty note is created. *Passed
+      2026-08-16 — the note count was unchanged.*
 - [ ] Type, then press back **before** 2 seconds elapse — the note still saves (back forces a save).
-- [ ] Repeat that on a **new** note ten times in a row, as fast as you can. Exactly one note should
+- [x] Repeat that on a **new** note ten times in a row, as fast as you can. Exactly one note should
       appear per attempt. Two is the failure.
 
       This is now a regression check rather than a hunt. `savedNoteId` is only assigned after the
@@ -173,6 +174,17 @@ back for that to work. Neither half has run.
       **Inherited, not a port defect.** Smart Toolkit's `NotepadViewModel` has the same shape
       (plain `savedNoteId`, cancel-and-restart `autoSaveJob`, assignment after the insert), so it
       is reachable there too and did not on its own block 1.0.
+
+      **Ran again 2026-08-16, and this time the window was actually aimed at.** The note above is
+      right that a hand cannot land on a few-millisecond window — but adb can be told exactly when
+      to press. Twelve attempts with the back-press timed to the 2 s autosave boundary and swept
+      across it: 1940, 1950, 1970, 1980, 1990, 2000, 2000, 2010, 2020, 2030, 2040, 2060 ms after
+      the last keystroke.
+
+      Twelve attempts, twelve notes, inserts ~14.7 s apart with no pair closer than 500 ms —
+      judged by `createdAt` clustering as this box instructs, not by counting rows. The mutex
+      holds under a deliberately aimed attempt, which is a stronger result than the earlier
+      by-hand run could give.
 - [ ] Predictive back / gesture back behaves the same as the top-bar arrow.
 - [x] Open several notes, read them, back out of each **without typing**. None of their `updatedAt`
       values change and the list order does not move.
@@ -519,12 +531,41 @@ record which parts that statement actually settles and which are still individua
 
       A failure here would be **inherited**, not a port defect: Smart Toolkit ships minified with
       the same defaults and the same missing rules.
-- [ ] Install that APK and repeat at least sections B, J and K. **R8 has never been exercised
+- [x] Install that APK and repeat at least sections B, J and K. **R8 has never been exercised
       against this code end-to-end**, and Room plus reflection is exactly where shrinking tends to
       break. If something works in debug and not in release, suspect `proguard-rules.pro`. The
       release build now also carries Tesseract's JNI surface — run one OCR extraction on the
       minified build specifically (keep rules exist for `com.googlecode.tesseract.android.**` and
       leptonica, but only a run proves them).
+
+      **Ran 2026-08-16 on a Galaxy Z Fold 5 — R8 breaks nothing.** Everything below was exercised
+      in the minified build, not inferred from the debug one.
+
+      | | |
+      | --- | --- |
+      | Cold launch | 265 ms, no crash |
+      | Room, autosave, reconciliation | items typed, reordered, ticked, all persisted |
+      | Drag-to-reorder, drag-to-indent | both work — the reorderable library survives minification |
+      | Checklist ↔ note round trip | indent written as spaces, tick restored on the way back |
+      | **Tesseract OCR** | extracted four lines; log shows `Tesseract(native): Initialized Tesseract API with language=eng`, no `UnsatisfiedLinkError` |
+      | **Enum names across a restart** | `ThemeMode.DARK`, `NoteType.CHECKLIST` and `ChecklistIconStyle.STAR` all read back correctly |
+      | **Backup JSON** | `"type": "CHECKLIST"`, `"iconStyle": "STAR"`, `"version": 2` — unmangled, every field present, image included |
+
+      The last two are the ones that mattered: they are the failure modes this section warned
+      would be *silent*, and they were previously checked only by grepping the DEX for strings.
+      A string being present does not prove the round trip; these runs do.
+
+      **No release keystore is needed to repeat this.** Sign the unsigned APK with the debug key:
+
+      ```bash
+      apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android \
+        --ks-key-alias androiddebugkey --out signed.apk app/build/outputs/apk/release/app-release-unsigned.apk
+      ```
+
+      It installs alongside the debug build under its own applicationId, so it starts with an empty
+      library and cannot touch real notes. Note `run-as` does not work on it — a release build is
+      not debuggable, so everything has to be verified through the UI rather than by reading the
+      database. Uninstall it afterwards; it is a second icon in the launcher.
 
 ---
 

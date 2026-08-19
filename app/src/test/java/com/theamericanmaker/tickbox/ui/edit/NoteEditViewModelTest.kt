@@ -160,6 +160,65 @@ class NoteEditViewModelTest {
     }
 
     @Test
+    fun toggleTypeRestoresTicksAndIndentWhenTheBodyIsUntouched() {
+        val vm = newChecklistViewModel()
+        vm.onChecklistItemTextChange(0, "Bread")
+        vm.onAddChecklistItem()
+        vm.onChecklistItemTextChange(1, "Sourdough")
+        vm.onIndentItem(1)
+        vm.onChecklistItemCheckedChange(0, true)
+
+        vm.onToggleType()
+        // The body carries the words and the indent, and no tick marks.
+        assertEquals("Bread\n  Sourdough", vm.uiState.value.content)
+
+        vm.onToggleType()
+        val items = vm.uiState.value.checklistItems
+        assertEquals(listOf("Bread", "Sourdough"), items.map { it.text })
+        assertEquals(listOf(true, false), items.map { it.isChecked })
+        assertEquals(listOf(0, 1), items.map { it.indentLevel })
+    }
+
+    @Test
+    fun toggleTypeDropsRestoredIdsSoTheRowsAreInsertedAfresh() {
+        // Saving as text deletes the rows, so carrying their ids back would hand saveNote
+        // updates for rows that no longer exist and the items would silently vanish.
+        val vm = newChecklistViewModel()
+        vm.onChecklistItemTextChange(0, "Bread")
+        vm.onToggleType()
+        vm.onToggleType()
+        assertTrue(vm.uiState.value.checklistItems.all { it.id == 0L })
+    }
+
+    @Test
+    fun toggleTypeFallsBackToParsingWhenTheBodyWasEdited() {
+        val vm = newChecklistViewModel()
+        vm.onChecklistItemTextChange(0, "Bread")
+        vm.onChecklistItemCheckedChange(0, true)
+
+        vm.onToggleType()
+        vm.onContentChange("Bread\nMilk")          // edited: the remembered list is now a lie
+
+        vm.onToggleType()
+        val items = vm.uiState.value.checklistItems
+        assertEquals(listOf("Bread", "Milk"), items.map { it.text })
+        assertTrue("an edited body cannot restore ticks", items.none { it.isChecked })
+    }
+
+    @Test
+    fun aPastedMarkdownChecklistBecomesItemsWithTicks() {
+        val vm = newChecklistViewModel()
+        vm.onToggleType()
+        vm.onContentChange("- [x] Milk\n- [ ] Bread\n  - [ ] Sourdough")
+
+        vm.onToggleType()
+        val items = vm.uiState.value.checklistItems
+        assertEquals(listOf("Milk", "Bread", "Sourdough"), items.map { it.text })
+        assertEquals(listOf(true, false, false), items.map { it.isChecked })
+        assertEquals(listOf(0, 0, 1), items.map { it.indentLevel })
+    }
+
+    @Test
     fun dictatedTextSplitsIntoChecklistItemsOnSentenceBreaks() {
         val vm = newChecklistViewModel()
         vm.onDictatedText("buy milk. get eggs. call mom")
