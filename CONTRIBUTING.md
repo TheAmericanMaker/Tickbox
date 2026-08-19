@@ -12,9 +12,9 @@ feature — read the scope section before proposing anything large.
   JDK 17. Details in [CLAUDE.md](CLAUDE.md).
 
 ```bash
-./gradlew assembleDebug        # debug APK
-./gradlew testDebugUnitTest    # full test suite — JVM only, no emulator needed
-./gradlew lintDebug            # Android lint
+./gradlew assembleDebug        # debug APKs — both flavours
+./gradlew testWithOcrDebugUnitTest testNoOcrDebugUnitTest   # JVM only, no emulator needed
+./gradlew lintWithOcrDebug lintNoOcrDebug                   # Android lint
 ./gradlew ktlintFormat         # autoformat before committing
 ```
 
@@ -23,7 +23,8 @@ Tickbox (`.debug` applicationId suffix).
 
 ## Before you open a PR
 
-1. `./gradlew ktlintFormat testDebugUnitTest lintDebug` passes locally.
+1. `./gradlew ktlintFormat testWithOcrDebugUnitTest testNoOcrDebugUnitTest lintWithOcrDebug`
+   passes locally.
 2. New behaviour comes with a test where the layer allows it — the repository, backup,
    and formatter layers all run as plain JVM tests.
 3. UI changes include a screenshot in the PR.

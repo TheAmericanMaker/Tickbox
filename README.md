@@ -55,7 +55,7 @@ Deliberately small and boring, so it stays approachable:
 - Room for notes, DataStore for preferences, images as files in app-private storage
 - Manual dependency injection via an `AppContainer` on the Application class — no Hilt
 - Two screens: a note list and a note editor
-- The whole test suite runs on the JVM: `./gradlew testDebugUnitTest`, no emulator
+- The whole test suite runs on the JVM: `./gradlew testWithOcrDebugUnitTest`, no emulator
 
 ## Third-party
 

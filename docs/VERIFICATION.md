@@ -4,7 +4,7 @@ What CI cannot tell us. Everything here needs a device or emulator (API 26+).
 
 Boxes marked done record real device runs, with dates and findings inline. Everything unmarked is
 genuinely unknown — record what you find; a failure here is expected and useful, not a surprise.
-The JVM test suite (`./gradlew testDebugUnitTest`) covers the data layer, the backup format, and
+The JVM test suite (`./gradlew testWithOcrDebugUnitTest`) covers the data layer, the backup format, and
 the editor state machine; this document covers the rest.
 
 Suggested order: **B** first if re-verifying after data-layer changes, then **J** and **K** (the
@@ -593,6 +593,46 @@ record which parts that statement actually settles and which are still individua
       The last two are the ones that mattered: they are the failure modes this section warned
       would be *silent*, and they were previously checked only by grepping the DEX for strings.
       A string being present does not prove the round trip; these runs do.
+
+      **Re-run 2026-08-19 against the `withOcr` release build of the flavour split (#31), on a
+      Galaxy Z Fold 5 / Android 14 — still nothing broken, and this pass closes the gap #25 named.**
+
+      | | |
+      | --- | --- |
+      | Cold launch, empty library | no crash |
+      | **Leptonica / Sauvola binarisation** | the half-shadowed packing slip from section J read back as four lines, one digit wrong in a street number |
+      | Checklist create, tick, force-stop, reopen | order kept, ticked item in its own section |
+      | Export archive | `notes.json` at root, images flat, `version: 2`, `type: CHECKLIST`, `iconStyle: CHECKBOX` — unmangled |
+      | Re-import that archive | notes and tick state restored; duplicates, which is the documented 1.0 behaviour |
+
+      The packing slip is the load-bearing row. #25 flagged the Leptonica keep rules as newer and
+      less proven than the Tesseract ones, and warned that a failure would look like *worse output*
+      rather than a crash: if `binarise()` silently returned null only the Otsu pass would run, and
+      the documented Otsu failure on this exact image is `Mid Michiga` from a clean four-line
+      address. Four lines came back, so `ReadFile`, `Convert`, `Binarize` and `Pix` all resolved.
+
+      Note that one extraction covers both passes — `recognize` always runs Otsu *and* Sauvola and
+      keeps whichever scores higher, so there is no separate "non-binarised path" left to prove for
+      R8 purposes. A screenshot is still worth running for *quality*, but that is section J.
+
+      Two boxes this pass did **not** close:
+
+      - **Photo orientation.** Re-attaching an image whose orientation was already normalised tests
+        nothing; it needs a camera capture, and that needs the CAMERA permission prompt answered.
+        Left ungranted deliberately.
+      - **A screenshot for OCR quality**, for the reason above.
+
+      One incidental finding, unrelated to R8 and reproducible in debug: a PNG **with an alpha
+      channel** — what `adb shell screencap -p` produces — fails to attach on this device, silently.
+      Logcat shows Samsung's decoder refusing it (`Kumiho ... isSupportedFormat: Format is not
+      supported`, then `Failed to create image decoder`), so `BitmapFactory` returns null and
+      `importImage` returns null with no message to the user. The same image as JPEG attaches
+      fine. Worth an issue: the failure is silent, and "a button that appears to do nothing reads
+      as a bug" is this codebase's own standard.
+
+      Also incidental: `adb exec-out screencap -p` is **corrupt on a foldable** — it writes a
+      multi-display warning into the byte stream. Capture on-device (`adb shell screencap -p
+      /sdcard/x.png`) and pull, or pass `-d <display-id>`.
 
       **No release keystore is needed to repeat this.** Sign the unsigned APK with the debug key:
 
