@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.theamericanmaker.tickbox.ocr.OcrBuild
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -73,15 +74,32 @@ private val NOTES_AND_LISTS = listOf(
     HowTo("Change the tick shape", "The Style row — box, circle, star, heart or check."),
 )
 
-private val PHOTOS_AND_VOICE = listOf(
-    HowTo("Attach a photo", "Gallery or Camera in the editor. Up to five per note."),
-    HowTo(
-        "Pull the text out of a photo",
-        "Tap the photo, then Extract text. It runs on the phone and takes a moment. " +
-            "Flat, evenly lit pages read best.",
-    ),
-    HowTo("Talk instead of typing", "The microphone beside the title, the body, or Add item."),
+private val ATTACH_A_PHOTO =
+    HowTo("Attach a photo", "Gallery or Camera in the editor. Up to five per note.")
+
+private val EXTRACT_TEXT = HowTo(
+    "Pull the text out of a photo",
+    "Tap the photo, then Extract text. It runs on the phone and takes a moment. " +
+        "Flat, evenly lit pages read best.",
 )
+
+private val TALK_INSTEAD = HowTo(
+    "Talk instead of typing",
+    "The microphone beside the title, the body, or Add item.",
+)
+
+/**
+ * Omits the extraction how-to in the `noOcr` variant.
+ *
+ * A how-to for a button that is not there is worse than no how-to: the reader goes looking,
+ * fails, and concludes the app is broken rather than that it is a different build.
+ */
+private fun photosAndVoice(ocrAvailable: Boolean): List<HowTo> =
+    if (ocrAvailable) {
+        listOf(ATTACH_A_PHOTO, EXTRACT_TEXT, TALK_INSTEAD)
+    } else {
+        listOf(ATTACH_A_PHOTO, TALK_INSTEAD)
+    }
 
 private val KEEPING_IT_SAFE = listOf(
     HowTo(
@@ -109,7 +127,7 @@ private val KEEPING_IT_SAFE = listOf(
  * place either is written down for the person using the app.
  */
 @Composable
-fun HelpAboutScreen(onBack: () -> Unit) {
+fun HelpAboutScreen(onBack: () -> Unit, ocrAvailable: Boolean = OcrBuild.AVAILABLE) {
     val context = LocalContext.current
     val version = remember(context) {
         runCatching {
@@ -131,7 +149,7 @@ fun HelpAboutScreen(onBack: () -> Unit) {
         ) {
             section("Lists and items", EDITING)
             section("Your notes", NOTES_AND_LISTS)
-            section("Photos and voice", PHOTOS_AND_VOICE)
+            section("Photos and voice", photosAndVoice(ocrAvailable))
             section("Backups and appearance", KEEPING_IT_SAFE)
 
             item {

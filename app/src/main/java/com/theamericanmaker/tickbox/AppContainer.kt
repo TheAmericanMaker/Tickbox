@@ -14,7 +14,7 @@ import com.theamericanmaker.tickbox.data.NoteImageStore
 import com.theamericanmaker.tickbox.data.NoteRepository
 import com.theamericanmaker.tickbox.data.UserPreferencesRepository
 import com.theamericanmaker.tickbox.data.backup.NoteBackupManager
-import com.theamericanmaker.tickbox.ocr.TesseractTextRecognizer
+import com.theamericanmaker.tickbox.ocr.OcrBuild
 import com.theamericanmaker.tickbox.ocr.TextRecognizer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +36,10 @@ interface AppContainer {
     val imageStore: NoteImageStore
     val backupManager: NoteBackupManager
 
-    /** Null when this build ships without an OCR engine; the UI hides the affordance. */
+    /**
+     * Null in the `noOcr` variant, which ships no engine; the UI hides the affordance.
+     * See `OcrBuild`, which exists once per flavour.
+     */
     val textRecognizer: TextRecognizer?
 
     /**
@@ -80,7 +83,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         )
     }
 
-    override val textRecognizer: TextRecognizer? by lazy { TesseractTextRecognizer(context) }
+    override val textRecognizer: TextRecognizer? by lazy { OcrBuild.createTextRecognizer(context) }
 
     override val applicationScope: CoroutineScope =
         CoroutineScope(SupervisorJob() + Dispatchers.IO)

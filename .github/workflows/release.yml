@@ -48,16 +48,17 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew --no-daemon assembleRelease
+        run: ./gradlew --no-daemon assembleWithOcrRelease assembleNoOcrRelease
 
+      # Two APKs now, so each is named explicitly rather than globbed onto one filename.
+      # The old loop renamed every match to tickbox-$TAG.apk and would silently have kept
+      # whichever landed last.
       - name: Collect artifacts and checksums
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/*.apk dist/
+          cp app/build/outputs/apk/withOcr/release/*.apk "dist/tickbox-$GITHUB_REF_NAME.apk"
+          cp app/build/outputs/apk/noOcr/release/*.apk "dist/tickbox-$GITHUB_REF_NAME-noocr.apk"
           cd dist
-          for f in *.apk; do
-            mv "$f" "tickbox-$GITHUB_REF_NAME.apk"
-          done
           sha256sum *.apk > SHA256SUMS.txt
 
       # Draft on purpose: install and smoke-test the exact artifact before publishing.
