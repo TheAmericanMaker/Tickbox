@@ -134,6 +134,10 @@ android {
 // update mechanism cannot distinguish them, which ships an update people cannot install.
 androidComponents {
     onVariants { variant ->
+        // Release only. Debug splits all keep the base code, so a developer can move between
+        // the universal APK and a per-ABI one without Android refusing the second as a
+        // downgrade — which on a debug build holding real notes means uninstalling to proceed.
+        if (variant.buildType != "release") return@onVariants
         variant.outputs.forEach { output ->
             val abi = output.filters
                 .find { it.filterType == FilterConfiguration.FilterType.ABI }
