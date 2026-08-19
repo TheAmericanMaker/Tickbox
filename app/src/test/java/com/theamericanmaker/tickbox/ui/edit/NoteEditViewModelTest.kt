@@ -226,14 +226,4 @@ class NoteEditViewModelTest {
         val texts = vm.uiState.value.checklistItems.map { it.text }.filter { it.isNotBlank() }
         assertEquals(listOf("Buy milk", "Get eggs", "Call mom"), texts)
     }
-
-    @Test
-    fun suggestedItemsInsertBeforeTheTrailingBlank() {
-        val vm = newChecklistViewModel()
-        vm.addSuggestedItem("Milk")
-
-        val items = vm.uiState.value.checklistItems
-        assertEquals("Milk", items.first().text)
-        assertTrue(items.last().text.isBlank())
-    }
 }

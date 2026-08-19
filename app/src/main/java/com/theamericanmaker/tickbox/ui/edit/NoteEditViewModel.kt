@@ -350,17 +350,6 @@ class NoteEditViewModel(
         scheduleAutoSave()
     }
 
-    fun addSuggestedItem(text: String) {
-        _uiState.update { state ->
-            val items = state.checklistItems.toMutableList()
-            val firstBlank = items.indexOfLast { it.text.isBlank() }
-            val newItem = ChecklistItemUiState(text = text)
-            if (firstBlank >= 0) items.add(firstBlank, newItem) else items.add(newItem)
-            state.copy(checklistItems = items)
-        }
-        scheduleAutoSave()
-    }
-
     fun onColorLabelChange(colorLabel: String?) {
         _uiState.update { it.copy(colorLabel = colorLabel) }
         scheduleAutoSave()

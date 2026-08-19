@@ -77,7 +77,7 @@ Deliberately small. One Gradle module, one activity, all Compose.
 ```
 data/            entities, DAOs, NoteDatabase, NoteRepository, NoteImageStore, preferences
 data/backup/     ZIP export/import — see the format contract below
-ocr/             TextRecognizer seam (no engine wired yet)
+ocr/             TextRecognizer seam + the Tesseract implementation behind it
 ui/list/         note list screen + ViewModel
 ui/edit/         editor screen + ViewModel, checklist row, images, templates, categorizer
 ui/theme/        TickboxTheme
@@ -166,9 +166,19 @@ These are decisions, not oversights. Check the plan before "fixing" them.
   not focused. Wrapping it in `if (isFocused)` instead is what caused the reflow above.
 - **Search is a `LIKE` scan.** Fine to roughly a thousand notes. FTS when someone measures a
   problem, not before.
-- **`NoteCategorizer` and `ChecklistSuggestionProvider` are hardcoded English keyword maps.** They
-  were kept so the extraction stayed behaviour-preserving. Replacing them with real user-editable
-  tags is the planned 1.2 direction.
+- **Checklist suggestions were removed, deliberately** (#27). They were a hardcoded English
+  keyword map offering generic filler — titling a list `tasks` produced "Review emails",
+  "Prepare report" — and across daily use they were never once useful. They also occupied about a
+  third of the editor and never scrolled away (#26). The primary input here is dictation, which is
+  faster than tapping a chip and is not limited to words the map knows, so the feature was saving
+  effort on an interaction nobody was having. Do not reintroduce a fixed suggestion list. A version
+  drawing on the user's *own* previous items is a legitimate future feature and would share no code
+  with what was deleted.
+- **`NoteCategorizer` is a hardcoded English keyword map**, kept so the extraction stayed
+  behaviour-preserving. It survives the above for two reasons: it costs no screen space, and it
+  also owns `noteColors` / `getNoteColor`, which the colour-label picker and the list cards both
+  depend on — so removing the categorising half means untangling that first. Real user-editable
+  tags remain the planned direction.
 
 ## Scope
 

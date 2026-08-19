@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -68,7 +69,15 @@ class NoteImageStore(private val context: Context) {
                 BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inSampleSize = sampleSize })
             } ?: return@withContext null
 
-            val bitmap = decoded.withOrientationApplied(orientation)
+            val bitmap = try {
+                decoded.withOrientationApplied(orientation)
+            } catch (error: OutOfMemoryError) {
+                // Rotation allocates a second full-size bitmap while the first is still live,
+                // so this is where the memory runs out if it is going to. Release the original
+                // before unwinding — the moment we are short is the moment to hand it back.
+                decoded.recycle()
+                throw error
+            }
             try {
                 FileOutputStream(outFile).use { out ->
                     bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
@@ -78,7 +87,17 @@ class NoteImageStore(private val context: Context) {
             }
 
             fileName
+        } catch (cancellation: CancellationException) {
+            // Must not be swallowed: this runs in viewModelScope, and treating cancellation as
+            // "the image failed" would report a false error and break structured concurrency.
+            throw cancellation
         } catch (_: Exception) {
+            null
+        } catch (_: OutOfMemoryError) {
+            // An Error, so the clause above never saw it, and a large photo on a low-memory
+            // device is the likeliest failure this function has. Declining the attachment is
+            // the behaviour the caller already handles; crashing the app is not. Recoverable
+            // because the allocation failed cleanly — nothing is half-written.
             null
         }
     }

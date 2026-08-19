@@ -6,6 +6,19 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Done
 
+- **Text notes get out of the way too** (#28). The header collapse was checklist-only by
+  construction — `showFullHeader` short-circuited on note type, and the signal behind it came from
+  a `LazyColumn` a text note does not have. Focus is the text-note equivalent: once the body has
+  focus the chrome folds to a title row, and tapping that row releases focus and brings it back.
+  Attach/Take photo moved inside the header so they collapse with everything else.
+- **Borderless title and body.** Both were `OutlinedTextField` — visible outline plus floating
+  label, which reads as a form to fill in rather than a page to write on. Now `BasicTextField`
+  with placeholders, matching the checklist rows. The title field is shared, so the checklist
+  editor gains from it as well.
+- **Checklist suggestions removed** (#27). A hardcoded keyword map produced generic office filler
+  that was never useful, while taking roughly a third of the editor and never scrolling out of the
+  way (#26, resolved by this). Dictation already beats tapping a chip and works for words no map
+  contains.
 - **Haptics.** A tick when an item is checked and one per row crossed while dragging, joining
   the one the indent gesture already had.
 - **Colour label names itself.** A tick on a swatch says one is chosen but not which, and the
