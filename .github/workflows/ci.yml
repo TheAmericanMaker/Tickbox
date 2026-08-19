@@ -52,18 +52,21 @@ jobs:
         with:
           cache-disabled: true
 
+      # Both flavours. They differ by more than a dependency: noOcr has its own
+      # OcrBuild, and withOcr has its own test source set, so neither is a strict
+      # superset of the other at compile time.
       - name: Unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: ./gradlew --no-daemon testWithOcrDebugUnitTest testNoOcrDebugUnitTest
 
       - name: Android lint
-        run: ./gradlew --no-daemon lintDebug
+        run: ./gradlew --no-daemon lintWithOcrDebug lintNoOcrDebug
 
       # Still built, because packaging is a real check — resource merging, manifest
       # merging and dexing all fail here rather than at compile time. The APK just
       # is not uploaded: 48 copies at ~31 MB had accumulated and none was ever
       # downloaded, and a debug build is a `./gradlew assembleDebug` away locally.
-      - name: Assemble debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Assemble debug APKs
+        run: ./gradlew --no-daemon assembleWithOcrDebug assembleNoOcrDebug
 
       - name: Upload reports
         uses: actions/upload-artifact@v4

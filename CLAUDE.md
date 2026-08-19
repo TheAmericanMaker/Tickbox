@@ -27,12 +27,19 @@ apply on a normal machine: build and run locally, and prefer doing so over trust
 ## Commands
 
 ```bash
-./gradlew assembleDebug        # debug APK -> app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # the whole test suite; JVM only, no emulator
-./gradlew lintDebug            # Android lint
-./gradlew ktlintCheck          # style (advisory in CI until an initial ktlintFormat commit)
-./gradlew assembleRelease      # minified; signed only if a keystore is configured
+./gradlew assembleWithOcrDebug   # the full app  -> app/build/outputs/apk/withOcr/debug/
+./gradlew assembleNoOcrDebug     # the small app -> app/build/outputs/apk/noOcr/debug/
+./gradlew testWithOcrDebugUnitTest testNoOcrDebugUnitTest   # JVM only, no emulator
+./gradlew lintWithOcrDebug lintNoOcrDebug                   # Android lint
+./gradlew ktlintCheck            # style (advisory in CI until an initial ktlintFormat commit)
+./gradlew assembleRelease        # both flavours, minified; signed only with a keystore
 ```
+
+**There are two product flavours, so the unqualified task names no longer exist.**
+`assembleDebug` and `assembleRelease` survive as aggregates over both flavours, but
+`testDebugUnitTest` and `lintDebug` are gone — Gradle fails with "task not found" rather than
+doing something reasonable. The variant names are `withOcr` / `noOcr`; see the OCR entry under
+*Known gaps* for what differs.
 
 Requires **JDK 17** and **Android SDK Platform 35**.
 
@@ -77,10 +84,14 @@ Deliberately small. One Gradle module, one activity, all Compose.
 ```
 data/            entities, DAOs, NoteDatabase, NoteRepository, NoteImageStore, preferences
 data/backup/     ZIP export/import — see the format contract below
-ocr/             TextRecognizer seam + the Tesseract implementation behind it
+ocr/             TextRecognizer seam, shared by both flavours
 ui/list/         note list screen + ViewModel
 ui/edit/         editor screen + ViewModel, checklist row, images, templates, categorizer
 ui/theme/        TickboxTheme
+
+src/withOcr/     OcrBuild + TesseractTextRecognizer + the 4 MB model in assets
+src/noOcr/       OcrBuild, returning null — the app's own behaviour before OCR existed
+src/testWithOcr/ tests that reach inside TesseractTextRecognizer
 ```
 
 ## Things that will bite you
@@ -144,6 +155,22 @@ These are decisions, not oversights. Check the plan before "fixing" them.
   from **JitPack** (content-filtered to that one group in `settings.gradle.kts`) because the
   library publishes nowhere else; F-Droid disallows JitPack, so the eventual fdroiddata recipe must
   build the library from source (`publishToMavenLocal`, same coordinates).
+- **OCR is a build flavour, and a runtime download is not an option** (#31). `withOcr` is the app
+  as it has been; `noOcr` drops Tesseract, Leptonica and the model. Measured on release builds:
+  **31.0 MB against 1.4 MB**, because the app's own code is all that is left once ~27 MB of native
+  libraries and a 4 MB model go — and R8 shrinks bytecode, not native code.
+
+  The obvious alternative — a button in settings that fetches OCR on first use — cannot be built.
+  Android 10 forbids executing code from the app's data directory (W^X), so native libraries have
+  to arrive through the package manager. The model alone *is* downloadable, but it is 3.9 MB of the
+  31.5 MB and fetching it would cost the app its "no network permission" claim. Play Feature
+  Delivery does deliver native code on demand and is disqualified for needing Play Core, which is
+  what ruled out ML Kit in the first place.
+
+  The whole difference is `OcrBuild`, which exists once per flavour and holds two facts that must
+  agree: whether an engine exists, and whether the UI may advertise one. Keeping them in one object
+  is deliberate — split them and you eventually ship a build that hides the button but carries
+  31 MB, or one that offers extraction it cannot do.
 - **Drag-to-reorder works by key, not index.** The checklist renders as two filtered sections, so
   display position ≠ list index; `onReorderChecklistItems` takes tempIds for that reason. Don't
   "simplify" it back to indices — that reintroduces the bug that kept this feature out of the

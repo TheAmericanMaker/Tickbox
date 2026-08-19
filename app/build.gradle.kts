@@ -41,6 +41,20 @@ android {
         }
     }
 
+    // Two ways to ship the same app. `withOcr` is Tickbox as it has been; `noOcr` drops
+    // Tesseract, Leptonica and the language model, which is ~31 MB of a ~31.5 MB download —
+    // the app's own code is 2.5 MB of dex. See #31.
+    //
+    // A runtime download instead of a build variant is not possible: Android 10 forbids
+    // executing code from the app's data directory, so native libraries have to arrive
+    // through the package manager. The model alone is downloadable but is only 3.9 MB of it,
+    // and fetching it would cost the app its "no network permission" claim.
+    flavorDimensions += "ocr"
+    productFlavors {
+        create("withOcr") { dimension = "ocr" }
+        create("noOcr") { dimension = "ocr" }
+    }
+
     signingConfigs {
         create("release") {
             if (releaseStoreFile != null) {
@@ -112,9 +126,10 @@ dependencies {
 
     implementation(libs.coroutines.android)
 
-    // OCR. Apache-2.0 wrapper around Tesseract 5 + Leptonica; ~8 MB of native libs
-    // across the four ABIs, plus the 4 MB English model in assets.
-    implementation(libs.tesseract4android)
+    // OCR, in the withOcr flavour only. Apache-2.0 wrapper around Tesseract 5 + Leptonica;
+    // ~27 MB of native libs across the four ABIs, plus the 4 MB English model in
+    // src/withOcr/assets. R8 cannot shrink any of it — it shrinks bytecode, not native code.
+    "withOcrImplementation"(libs.tesseract4android)
 
     implementation(libs.reorderable)
 
