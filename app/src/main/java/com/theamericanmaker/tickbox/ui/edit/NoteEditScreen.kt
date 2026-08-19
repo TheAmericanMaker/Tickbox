@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -61,7 +62,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -82,8 +82,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -135,6 +138,10 @@ fun NoteEditScreen(
     // Starts expanded, so nothing a user already had in front of them disappears on upgrade.
     var checkedExpanded by rememberSaveable { mutableStateOf(true) }
     var showEditorMenu by remember { mutableStateOf(false) }
+    // A text note has no scrolling list to collapse against, so focus is the signal:
+    // once you are writing in the body, the chrome above it has stopped being useful.
+    var contentFocused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
 
     val lazyListState = rememberLazyListState()
     // Keys, not indices: the checklist displays as two filtered sections, so a row's
@@ -452,17 +459,31 @@ fun NoteEditScreen(
                 .imePadding()
                 .padding(horizontal = 16.dp),
         ) {
-            val showFullHeader = state.type != NoteType.CHECKLIST || !isHeaderCollapsed
+            // Both types collapse; they just disagree on what counts as "busy". A checklist
+            // watches its scroll position, a text note watches whether the body has focus.
+            val headerCollapsed = when (state.type) {
+                NoteType.CHECKLIST -> isHeaderCollapsed
+                NoteType.TEXT -> contentFocused
+            }
+            val showFullHeader = !headerCollapsed
 
             AnimatedVisibility(
-                visible = state.type == NoteType.CHECKLIST && isHeaderCollapsed,
+                visible = headerCollapsed,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically(),
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { coroutineScope.launch { lazyListState.animateScrollToItem(0) } }
+                        .clickable {
+                            when (state.type) {
+                                NoteType.CHECKLIST ->
+                                    coroutineScope.launch { lazyListState.animateScrollToItem(0) }
+                                // Nothing to scroll back to — releasing the body's focus is
+                                // what brings the header down.
+                                NoteType.TEXT -> focusManager.clearFocus()
+                            }
+                        }
                         .padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -498,22 +519,40 @@ fun NoteEditScreen(
                         }
                     }
 
-                    OutlinedTextField(
-                        value = state.title,
-                        onValueChange = viewModel::onTitleChange,
-                        label = { Text("Title") },
-                        trailingIcon = {
-                            IconButton(onClick = { launchDictation(DICTATION_TARGET_TITLE) }) {
-                                Icon(
-                                    Icons.Filled.Mic,
-                                    contentDescription = "Voice input for title",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
+                    // Borderless, like the checklist rows. An outlined box reads as a form
+                    // to fill in; text on the surface reads as a page to write on, and this
+                    // field is shared with the checklist editor so both gain from it.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BasicTextField(
+                            value = state.title,
+                            onValueChange = viewModel::onTitleChange,
+                            textStyle = MaterialTheme.typography.titleLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 12.dp),
+                            decorationBox = { innerTextField ->
+                                if (state.title.isEmpty()) {
+                                    Text(
+                                        text = "Title",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                innerTextField()
+                            },
+                        )
+                        IconButton(onClick = { launchDictation(DICTATION_TARGET_TITLE) }) {
+                            Icon(
+                                Icons.Filled.Mic,
+                                contentDescription = "Voice input for title",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
 
                     ColorLabelPicker(
                         selected = state.colorLabel,
@@ -542,12 +581,11 @@ fun NoteEditScreen(
                             onSelect = viewModel::onIconStyleChange,
                         )
                     }
-                }
-            }
 
-            when (state.type) {
-                NoteType.TEXT -> {
-                    if (state.images.isEmpty()) {
+                    // Inside the header rather than above the body, so these collapse with
+                    // everything else once you start writing. A note with images already has
+                    // the attachment row above, which carries the same two actions.
+                    if (state.type == NoteType.TEXT && state.images.isEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(
                                 onClick = {
@@ -561,19 +599,42 @@ fun NoteEditScreen(
                             TextButton(onClick = launchCamera) { Text("Take photo") }
                         }
                     }
+                }
+            }
+
+            when (state.type) {
+                NoteType.TEXT -> {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
                     ) {
-                        OutlinedTextField(
+                        BasicTextField(
                             value = contentFieldValue,
                             onValueChange = { newValue ->
                                 contentFieldValue = newValue
                                 viewModel.onContentChange(newValue.text)
                             },
-                            label = { Text("Content") },
-                            modifier = Modifier.fillMaxSize(),
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                // Keeps every line clear of the floating mic, rather than
+                                // letting long text run underneath it.
+                                .padding(end = 48.dp)
+                                .onFocusChanged { contentFocused = it.isFocused },
+                            decorationBox = { innerTextField ->
+                                if (contentFieldValue.text.isEmpty()) {
+                                    Text(
+                                        text = "Write something…",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                innerTextField()
+                            },
                         )
                         IconButton(
                             onClick = { launchDictation(DICTATION_TARGET_CONTENT) },
