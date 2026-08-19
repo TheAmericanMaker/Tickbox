@@ -24,8 +24,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,7 +55,6 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -113,7 +110,6 @@ private const val DICTATION_TARGET_CONTENT = "content"
 /** One beat for a newly added row to compose and lay out before it is measured or focused. */
 private const val FOCUS_LAYOUT_SETTLE_MS = 100L
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NoteEditScreen(
     onBack: () -> Unit,
@@ -593,36 +589,6 @@ fun NoteEditScreen(
                 }
 
                 NoteType.CHECKLIST -> {
-                    val suggestions = remember(state.title) {
-                        ChecklistSuggestionProvider.getSuggestions(state.title)
-                    }
-                    val addedTexts = remember(state.checklistItems) {
-                        state.checklistItems.map { it.text.lowercase() }.toSet()
-                    }
-                    val filteredSuggestions = suggestions.filter { it.lowercase() !in addedTexts }
-
-                    AnimatedVisibility(visible = filteredSuggestions.isNotEmpty()) {
-                        Column {
-                            Text(
-                                text = "Suggestions",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
-                            FlowRow(modifier = Modifier.padding(bottom = 4.dp)) {
-                                filteredSuggestions.take(8).forEach { suggestion ->
-                                    AssistChip(
-                                        onClick = { viewModel.addSuggestedItem(suggestion) },
-                                        label = {
-                                            Text(suggestion, style = MaterialTheme.typography.labelSmall)
-                                        },
-                                        modifier = Modifier.padding(end = 4.dp),
-                                    )
-                                }
-                            }
-                        }
-                    }
-
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
                     // Indices here are positions in the full list; the two sections are

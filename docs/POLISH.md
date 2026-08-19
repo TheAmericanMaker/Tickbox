@@ -6,6 +6,10 @@ fixes and why it earns a place in a deliberately simple app. Ranked; work top to
 
 ## Done
 
+- **Checklist suggestions removed** (#27). A hardcoded keyword map produced generic office filler
+  that was never useful, while taking roughly a third of the editor and never scrolling out of the
+  way (#26, resolved by this). Dictation already beats tapping a chip and works for words no map
+  contains.
 - **Appearance setting.** Light / Dark / System, in the list screen's overflow above
   Export/Import. The preference was stored and applied from the start but nothing ever
   wrote it, so the setting existed with no way to reach it. Selection applies live with
