@@ -70,7 +70,7 @@ jobs:
 
       # Draft on purpose: install and smoke-test the exact artifact before publishing.
       - name: Create draft release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           draft: true
