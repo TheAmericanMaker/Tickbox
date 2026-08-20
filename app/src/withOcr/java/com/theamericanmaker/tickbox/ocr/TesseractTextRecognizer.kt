@@ -68,7 +68,7 @@ class TesseractTextRecognizer(private val context: Context) : TextRecognizer {
                         }
                     }
 
-                    if (sauvola != null && sauvola.second > otsu.second) sauvola.first else otsu.first
+                    if (preferSauvola(otsu.second, sauvola?.second)) sauvola!!.first else otsu.first
                 } finally {
                     api.recycle()
                 }
@@ -86,7 +86,24 @@ class TesseractTextRecognizer(private val context: Context) : TextRecognizer {
         setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
         setImage()
         val text = getUTF8Text().orEmpty()
-        return text to text.readableWordCount()
+        return text to scoreOf(text)
+    }
+
+    /**
+     * How many words this pass read *and was sure of*.
+     *
+     * `wordConfidences()` has to be read after [TessBaseAPI.getUTF8Text] has forced recognition,
+     * and it can report more entries than the text has tokens — it includes candidate blobs. That
+     * over-count is what made it useless as a raw total, and is exactly what the threshold
+     * discards, since blobs that never reached the text score low.
+     *
+     * Falls back to the text-only heuristic if the native call is unavailable, so a missing
+     * signal degrades to the previous behaviour instead of scoring everything zero.
+     */
+    private fun TessBaseAPI.scoreOf(text: String): Int {
+        if (text.isBlank()) return 0
+        return runCatching { wordConfidences().confidentWordCount() }
+            .getOrElse { text.readableWordCount() }
     }
 
     /**
@@ -153,18 +170,51 @@ class TesseractTextRecognizer(private val context: Context) : TextRecognizer {
 }
 
 /**
- * How much of [this] looks like actual words — the score for choosing between OCR passes.
+ * How many recognised words cleared [MIN_WORD_CONFIDENCE] — the score for choosing between passes.
  *
- * Scores the *output*, rather than asking Tesseract, because both of its own signals mislead
- * here. `meanConfidence()` averages over whatever was recognised, so it rewards reading less: the
- * pass that found `Mid Michiga` and stopped out-scored the pass that read the whole address.
- * `wordConfidences()` is worse — it covers internal candidate blobs including ones that never
- * reach the text, and on screen moiré reported 192 words for 134 characters of output, which is
- * not a number that can be true.
+ * Both of Tesseract's obvious signals fail here, in opposite directions, and both failures are
+ * measured rather than argued:
+ *
+ * `meanConfidence()` rewards reading *less*. On a half-shadowed packing slip, Otsu returned
+ * 11 characters at confidence **93** while Sauvola returned the whole address block at **85** — so
+ * averaging picks the pass that gave up.
+ *
+ * Counting word-shaped tokens in the output rewards reading *more*, including nonsense. On a
+ * screenshot of this app, Otsu read the screen almost perfectly and scored **8**, while Sauvola
+ * shredded the anti-aliased glyphs into 25 word-shaped fragments — `itesseractitest}`,
+ * `Marrowiscoallll` — and scored **25**. Noise generates more tokens than clean text does, so that
+ * metric rewarded the failure it existed to catch.
+ *
+ * Counting *confident* words is the combination that survives both, because it rewards reading more
+ * only when Tesseract believes what it read:
+ *
+ * | | screenshot | packing slip |
+ * | --- | --- | --- |
+ * | Otsu | **14** | 3 |
+ * | Sauvola | 5 | **13** |
+ *
+ * The threshold is not knife-edge — 60, 70 and 80 all separate both images the same way.
+ */
+internal fun IntArray.confidentWordCount(): Int = count { it >= MIN_WORD_CONFIDENCE }
+
+/**
+ * Whether the Sauvola pass should be preferred, given both scores.
+ *
+ * Split out from the recogniser so the decision can be tested without Tesseract: the numbers in
+ * `PassScoringTest` are the ones measured on real images.
+ */
+internal fun preferSauvola(otsuScore: Int, sauvolaScore: Int?): Boolean =
+    sauvolaScore != null && sauvolaScore > otsuScore
+
+/**
+ * How much of [this] looks like actual words.
+ *
+ * No longer the primary score — see [confidentWordCount] for why it was replaced and what it got
+ * wrong. Kept as the fallback for when `wordConfidences()` is unavailable, where behaving as the
+ * app did before beats scoring every pass zero.
  *
  * A token counts when it holds at least three alphanumerics and is not mostly punctuation. That
- * tracks real reading while discarding the `| : ' ee | S : |` debris a bad binarisation throws
- * off, which is what separates the two passes in practice.
+ * tracks real reading while discarding the `| : ' ee | S : |` debris a bad binarisation throws off.
  */
 internal fun String.readableWordCount(): Int = split(WHITESPACE).count { token ->
     val alphanumerics = token.count(Char::isLetterOrDigit)
@@ -175,3 +225,11 @@ private val WHITESPACE = Regex("\\s+")
 
 /** Below this, a token is as likely to be binarisation debris as a word. */
 private const val MIN_WORD_ALPHANUMERICS = 3
+
+/**
+ * Tesseract's per-word confidence, 0-100, below which a word is not counted.
+ *
+ * Chosen from the measurements in [confidentWordCount]: garbage from a mis-binarised screenshot
+ * sat around 32 mean, correct reads around 79-93.
+ */
+private const val MIN_WORD_CONFIDENCE = 70
