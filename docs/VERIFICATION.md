@@ -539,7 +539,17 @@ record which parts that statement actually settles and which are still individua
       Drive it with `settings put system accelerometer_rotation 0` then
       `settings put system user_rotation 1`, and put both back afterwards. **Caret position is
       still unverified** — no field was focused for this run.
-- [ ] The launcher icon renders correctly, including themed/monochrome mode on Android 13+.
+- [x] The launcher icon renders correctly, including themed/monochrome mode on Android 13+.
+
+      *Ran 2026-08-21 on a Galaxy Z Fold 5.* Replaced the placeholder (see `docs/POLISH.md`) and
+      found it in the app drawer: green rounded square, white tick box, check knocked through to
+      the background. Legible at launcher size and reads as a ticked box immediately. Verified
+      through a third-party icon pack, which framed it without breaking the mark.
+
+      **The themed/monochrome half is not covered.** That needs One UI's *Themed icons* toggle
+      turned on, which is a device setting rather than a test step. The layer is at least wired
+      correctly and is a genuine silhouette — one `evenOdd` path, so tinting it leaves the check
+      as a hole rather than filling it solid, which is the usual way this goes wrong.
       It is currently **placeholder art** and needs replacing before release.
 
 ---
