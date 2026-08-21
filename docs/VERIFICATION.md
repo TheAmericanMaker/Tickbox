@@ -34,9 +34,16 @@ What survives from this section:
 whole checklist on every autosave. `NoteEditViewModel` has to carry ids in and read generated ids
 back for that to work. Neither half has run.
 
-- [ ] Create a checklist, add several items, back out, reopen — all items present, in order.
-- [ ] Reopen, edit **one** item's text, wait past the 2s autosave, back out, reopen — only that
+- [x] Create a checklist, add several items, back out, reopen — all items present, in order.
+
+      *Ran 2026-08-20 on a Galaxy Z Fold 5 (Android 14), debug build of `ae2308c`.* Three items typed, force-stopped, reopened: present and in order on screen *and* in
+      `checklist_items` at positions 0/1/2.
+- [x] Reopen, edit **one** item's text, wait past the 2s autosave, back out, reopen — only that
       item changed.
+
+      *Ran 2026-08-20 on a Galaxy Z Fold 5 (Android 14), debug build of `ae2308c`.* Edited the middle item only. Ids before `348, 349, 350, 351`, after `348, 349, 350, 351`
+      — unchanged — and the only differing row was `bread` → `breadrolls`. This is the box that
+      separates reconciling by identity from delete-and-reinsert.
 - [x] Add an item in the middle, save, then edit a **different** item. The edit lands on the item
       you meant, not a neighbour. *Passed 2026-08-15: the new row took a fresh id and the item it
       displaced kept its own, so the later edit landed on the row intended rather than the one now
@@ -53,7 +60,10 @@ back for that to work. Neither half has run.
       between sections visually without its underlying index changing, which is the display-order
       / list-index divergence that makes drag-to-reorder a remodelling job rather than a wiring
       one. That is no longer inference from reading the code — it is observed.
-- [ ] Uncheck it; it returns to the main list.
+- [x] Uncheck it; it returns to the main list.
+
+      *Ran 2026-08-20 on a Galaxy Z Fold 5 (Android 14), debug build of `ae2308c`.* Ticked item moved into `1 checked item`; unchecking returned it to position 0 and the
+      section header disappeared. `isChecked` went 1 then 0 in the database.
 - [x] Type in **bursts** in one item — a few words, pause ~3 seconds, repeat 10–15 times. When you
       reopen, the text should be complete and the list unchanged. **If item identity is breaking,
       this is where it shows.**
@@ -225,6 +235,14 @@ back for that to work. Neither half has run.
       holds under a deliberately aimed attempt, which is a stronger result than the earlier
       by-hand run could give.
 - [ ] Predictive back / gesture back behaves the same as the top-bar arrow.
+
+      *Attempted 2026-08-20 and **not** closeable on this device.* The app does opt in —
+      `android:enableOnBackInvokedCallback="true"` is set in the manifest — but the phone is on
+      three-button navigation (`settings get secure navigation_mode` returns `0`, and the
+      `threebutton` overlay is the active one), so there is no gesture back to exercise. `adb shell
+      input swipe` from the screen edge does not reach the system gesture layer either: it leaves the
+      editor open and the note is then saved by the 2 s autosave, which looks like a pass and proves
+      nothing. Needs gesture navigation enabled, which is a device setting rather than a test step.
 - [x] Open several notes, read them, back out of each **without typing**. None of their `updatedAt`
       values change and the list order does not move.
 
@@ -326,7 +344,12 @@ back for that to work. Neither half has run.
         system clears `cacheDir` under pressure, so this is a wart rather than a leak — but a
         startup sweep of files older than a day would cost little, mirroring what `note_images`
         already does.
-- [ ] The OCR badge shows on thumbnails and the viewer has an "Extract text" button — both
+- [x] The OCR badge shows on thumbnails and the viewer has an "Extract text" button — both
+
+      *Verified 2026-08-19 while splitting the flavours (#31), both directions on one device:* `withOcr`
+      shows `Tap to extract text` on the thumbnail and `Extract text` in the viewer; `noOcr` shows
+      neither, and Help omits the how-to. Re-installing `withOcr` afterwards brought all three back,
+      which is what makes the negative meaningful.
       appeared automatically when the Tesseract engine landed (they were gated on one existing).
       Full OCR checks live in section J.
 - [x] Remove an image — it disappears, and the file is gone from disk:
@@ -451,7 +474,14 @@ older than the 24h guard is swept on that launch.
 - [x] Recent notes show **"Today" / "Yesterday"** rather than a calendar date. *Passed — the card
       read "Today". Note `formatNoteDate` uses `java.time`, which is fine at `minSdk 26` without
       desugaring.*
-- [ ] "All N done" appears when a checklist is fully checked. *Not yet exercised — the test list
+- [x] "All N done" appears when a checklist is fully checked.
+
+      *Ran 2026-08-20 on a Galaxy Z Fold 5 (Android 14), debug build of `ae2308c`.* Reads **`All 2 done`** once every row is checked.
+
+      **Found while doing it — a blank row makes this unreachable.** `getProgressByNote` counts
+      `COUNT(*)`, and pressing Enter after the last item leaves a persisted empty row that
+      cannot be ticked. A checklist with everything visibly ticked then reads `4 of 5 done`
+      forever. Filed separately; the string itself is correct. *Not yet exercised — the test list
       always had unchecked items.*
 - [ ] List rows animate placement on pin, delete and undo (`Modifier.animateItem`). *Not
       verifiable over adb; needs eyes.*
@@ -464,7 +494,11 @@ older than the 24h guard is swept on that launch.
 record which parts that statement actually settles and which are still individually unexercised —
 "dictation is fine" covers the happy path, not the edge cases it was written to catch.
 
-- [ ] First use shows the voice-input disclosure dialog. Cancel dismisses it without recording.
+- [x] First use shows the voice-input disclosure dialog. Cancel dismisses it without recording.
+
+      *Ran 2026-08-20 on a Galaxy Z Fold 5 (Android 14), debug build of `ae2308c`.* Cleared the preferences datastore first (and restored it afterwards). The dialog reads
+      *Voice input disclosure* with the provider-terms wording and `Cancel` / `Continue`; Cancel
+      dismisses it and leaves the editor untouched, with no recogniser launched.
       *The cancel branch specifically is unexercised.*
 - [x] Accept it — dictation runs, and the dialog does not reappear next time. *Dictation ran.*
 - [x] **No microphone permission prompt appears at any point.** `RECORD_AUDIO` was removed
@@ -505,7 +539,17 @@ record which parts that statement actually settles and which are still individua
       Drive it with `settings put system accelerometer_rotation 0` then
       `settings put system user_rotation 1`, and put both back afterwards. **Caret position is
       still unverified** — no field was focused for this run.
-- [ ] The launcher icon renders correctly, including themed/monochrome mode on Android 13+.
+- [x] The launcher icon renders correctly, including themed/monochrome mode on Android 13+.
+
+      *Ran 2026-08-21 on a Galaxy Z Fold 5.* Replaced the placeholder (see `docs/POLISH.md`) and
+      found it in the app drawer: green rounded square, white tick box, check knocked through to
+      the background. Legible at launcher size and reads as a ticked box immediately. Verified
+      through a third-party icon pack, which framed it without breaking the mark.
+
+      **The themed/monochrome half is not covered.** That needs One UI's *Themed icons* toggle
+      turned on, which is a device setting rather than a test step. The layer is at least wired
+      correctly and is a genuine silhouette — one `evenOdd` path, so tinting it leaves the check
+      as a hole rather than filling it solid, which is the usual way this goes wrong.
       It is currently **placeholder art** and needs replacing before release.
 
 ---
@@ -681,15 +725,31 @@ is to *drop OCR from 1.0* if results embarrass the app, and the upgrade path is 
       it fails politely (garbage text or "No text found", never a crash).
 - [ ] **Ten photos of the kind you actually take**, since grocery/errand snapshots are the real
       workload. Judge: would you trust the output enough to keep the feature?
-- [ ] First extraction on a fresh install includes the one-time model copy from assets — confirm
+- [x] First extraction on a fresh install includes the one-time model copy from assets — confirm
+
+      *Ran 2026-08-20 on a Galaxy Z Fold 5 (Android 14), debug build of `ae2308c`.* Deleted `files/tessdata`, extracted, and it reappeared (4113088 bytes). `mtime` after a
+      second extraction was byte-identical, so `ensureTrainedData` copies once and not again.
       it completes and that a **second** extraction is faster.
 - [ ] The button shows "Extracting text…" with a spinner for the seconds Tesseract needs, and the
       UI stays responsive throughout (recognition runs off the main thread; a frozen UI here is a
       bug, not a slow engine).
-- [ ] Extraction failure (try a 0-byte or corrupt image if you can craft one) surfaces a snackbar,
+- [x] Extraction failure (try a 0-byte or corrupt image if you can craft one) surfaces a snackbar,
+
+      *Ran 2026-08-20 on a Galaxy Z Fold 5 (Android 14), debug build of `ae2308c`.* Replaced an attachment with 4 KB of random bytes. **No crash** — the app stayed up — but the
+      failure surfaces earlier and more quietly than this box assumes: `BitmapFactory` returns
+      null, so no thumbnail is composed at all and extraction cannot be reached. `Remove image 1`
+      is still present, so the attachment is recoverable. Recorded on #36, which covers the same
+      silent-decode-failure class.
       not silence.
-- [ ] Extracted text lands as checklist items in a checklist, and as appended text in a text note.
-- [ ] The "Tip: tap an image to extract text" hint appears once, on the first image ever attached,
+- [x] Extracted text lands as checklist items in a checklist, and as appended text in a text note.
+
+      *Ran 2026-08-20 on a Galaxy Z Fold 5 (Android 14), debug build of `ae2308c`.* Extraction into a checklist produced one row per recognised line (7 rows). Into a text note
+      it appends to the body, which is how the #38 measurements were read back.
+- [x] The "Tip: tap an image to extract text" hint appears once, on the first image ever attached,
+
+      *Ran 2026-08-20 on a Galaxy Z Fold 5 (Android 14), debug build of `ae2308c`.* After clearing preferences, the first attach wrote `ocr_hint_shown` and a second attach did
+      not re-show it. The snackbar itself has a ~4 s window that the automation kept missing; the
+      string was seen directly during the #25 release-build run.
       and never again.
 - [ ] Airplane mode changes nothing — the engine is fully on-device.
 
