@@ -750,14 +750,26 @@ nothing else, which is not worth 11 MB.
 
 **Sauvola is not a free win, and is not applied unconditionally.** On the photo *of a screen* it was
 markedly worse than Tesseract's own thresholding — local thresholding mangles screen moiré and
-anti-aliased glyphs. So both passes run and the better result wins, scored by how many tokens in the
-output look like real words.
+anti-aliased glyphs. So both passes run and the better result wins.
 
-That scoring is deliberately not Tesseract's own confidence, and both of its signals were tried
-first: `meanConfidence()` is an average over what was recognised, so it *rewards reading less* and
-picked `Mid Michiga` over the full address; `wordConfidences()` counts internal candidate blobs
-including discarded ones, and reported **192 words for 134 characters of output**. Pinned by
-`ReadableWordCountTest`, using the real captured strings.
+**How the winner is scored was wrong until #38, and the fix is measured.** Three metrics were tried:
+
+| metric | screenshot (Otsu should win) | packing slip (Sauvola should win) |
+| --- | --- | --- |
+| mean confidence | Otsu 79, Sauvola 32 ✓ | Otsu **93**, Sauvola 85 ✗ |
+| word-*shaped* token count | Otsu 8, Sauvola **25** ✗ | Otsu 2, Sauvola 9 ✓ |
+| **words above confidence 70** | Otsu **14**, Sauvola 5 ✓ | Otsu 3, Sauvola **13** ✓ |
+
+`meanConfidence()` averages, so it rewards reading *less* — on the slip it prefers the pass that
+returned `Mid Michiga` and stopped. Counting word-shaped tokens rewards reading *more*, including
+nonsense — on a screenshot Sauvola produced `itesseractitest}` and `Marrowiscoallll` and out-scored
+a near-perfect Otsu read 25 to 8. Counting *confident* words is the combination that separates both
+images, in opposite directions, which is what a single metric has to do.
+
+Measured 2026-08-20 on a Galaxy Z Fold 5 with the recogniser logging each pass. 60, 70 and 80 all
+separate the two images the same way, so the threshold is not tuned to one photo. Pinned by
+`PassScoringTest`; `ReadableWordCountTest` still covers the fallback used when the native
+confidence call is unavailable.
 
 Note in passing: `saveFromUri` downscales with `inSampleSize`, which only halves in powers of two,
 so a 4000px photo becomes **2000px** rather than the 2560 `MAX_DIMENSION` allows. Not what was

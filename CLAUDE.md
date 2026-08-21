@@ -146,10 +146,20 @@ These are decisions, not oversights. Check the plan before "fixing" them.
   have: on a half-shadowed packing slip it binarised the page into a black region and a white blob
   and returned `Mid Michiga` from a clean four-line address. Sauvola local thresholding fixes that
   completely, **but is worse on photos of screens**, where it mangles moiré and anti-aliasing. So
-  both run and the output with more word-like tokens wins. The scoring is deliberately not
-  Tesseract's own confidence — `meanConfidence()` rewards reading *less*, and `wordConfidences()`
-  counts internal blobs that never reach the text. See `TesseractTextRecognizer.binarise` and
-  `ReadableWordCountTest`; the reasoning is in `docs/VERIFICATION.md` section J.
+  both run and the better result wins, **scored by how many words Tesseract read *and was confident
+  of*** — `wordConfidences()` counted above a threshold.
+
+  Two earlier metrics failed here in opposite directions, and #38 is the measurement.
+  `meanConfidence()` rewards reading *less*: on the packing slip, Otsu returned 11 characters at
+  confidence 93 while Sauvola returned the whole address at 85. Counting word-*shaped* tokens
+  rewards reading *more*, including nonsense: on a screenshot of this app, Otsu read the screen
+  almost perfectly and scored 8, while Sauvola shredded the glyphs into 25 word-shaped fragments
+  and won — noise makes more tokens than clean text does.
+
+  Note that "Sauvola is worse on photos of screens" is the wrong frame for the common case. A
+  *screenshot* is a pristine image where Otsu wins easily; it was screenshots, not photos of
+  screens, that the old scoring got wrong. See `TesseractTextRecognizer`, `PassScoringTest` which
+  pins both measurements, and `docs/VERIFICATION.md` section J.
 - **The 4 MB `tessdata_fast` model is deliberate and sufficient.** The 15 MB `tessdata_best` was
   measured against it on the failing image and was **byte-identical** until the thresholding was
   fixed, after which it corrected exactly one digit. Not worth 11 MB. Note the dependency comes
