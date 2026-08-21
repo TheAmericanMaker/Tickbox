@@ -23,9 +23,19 @@ interface ChecklistItemDao {
 
     // SUM over a 0/1 integer column; GROUP BY guarantees at least one row per group,
     // so the sum can never be null.
+    //
+    // Blank rows are excluded deliberately (#41). The editor keeps an empty row as the
+    // "type the next item" affordance, and pressing Enter after the last item leaves one
+    // behind, so counting every row made a fully ticked list read "3 of 4 done" forever —
+    // an empty row cannot be ticked, so "All N done" was unreachable. A blank row is an
+    // editing affordance, not outstanding work.
+    //
+    // A checklist of nothing but blank rows drops out of this result entirely, which the
+    // list screen already handles: no row means `progress == null` and the card says
+    // "Checklist" rather than a count of nothing.
     @Query(
         "SELECT noteId, COUNT(*) AS total, SUM(isChecked) AS checked " +
-            "FROM checklist_items GROUP BY noteId",
+            "FROM checklist_items WHERE TRIM(text) != '' GROUP BY noteId",
     )
     fun getProgressByNote(): Flow<List<ChecklistProgress>>
 

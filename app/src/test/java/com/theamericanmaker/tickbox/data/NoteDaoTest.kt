@@ -90,4 +90,37 @@ class NoteDaoTest {
         assertEquals(1, progress.getValue(b).total)
         assertEquals(0, progress.getValue(b).checked)
     }
+
+    /**
+     * The regression behind #41.
+     *
+     * The editor keeps a blank row as the "type the next item" affordance, and pressing Enter
+     * after the last item leaves one persisted. Counting it made a fully ticked list read
+     * "3 of 4 done" forever, and because an empty row cannot be ticked, "All N done" was
+     * unreachable — observed on a device before this was fixed.
+     */
+    @Test
+    fun progressIgnoresBlankRows() = runBlocking {
+        val id = db.noteDao().insert(NoteEntity(title = "list", type = "CHECKLIST"))
+        db.checklistItemDao().insert(ChecklistItemEntity(noteId = id, text = "milk", isChecked = true))
+        db.checklistItemDao().insert(ChecklistItemEntity(noteId = id, text = "bread", isChecked = true))
+        // what Enter after the last item leaves behind, plus a whitespace-only variant
+        db.checklistItemDao().insert(ChecklistItemEntity(noteId = id, text = "", isChecked = false))
+        db.checklistItemDao().insert(ChecklistItemEntity(noteId = id, text = "   ", isChecked = false))
+
+        val progress = db.checklistItemDao().getProgressByNote().first().single()
+        assertEquals(2, progress.total)
+        assertEquals(2, progress.checked)
+        // which is what makes the list card able to say "All 2 done"
+        assertEquals(progress.total, progress.checked)
+    }
+
+    /** A checklist of nothing but blank rows reports nothing, rather than "0 of 0". */
+    @Test
+    fun aChecklistOfOnlyBlankRowsHasNoProgressRow() = runBlocking {
+        val id = db.noteDao().insert(NoteEntity(title = "empty", type = "CHECKLIST"))
+        db.checklistItemDao().insert(ChecklistItemEntity(noteId = id, text = "", isChecked = false))
+
+        assertTrue(db.checklistItemDao().getProgressByNote().first().none { it.noteId == id })
+    }
 }
