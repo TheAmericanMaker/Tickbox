@@ -6,9 +6,16 @@ pluginManagement {
     }
 }
 
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-}
+// No toolchain resolver on purpose. The foojay convention plugin downloads a JDK from the
+// network during configuration, which F-Droid's scanner rejects outright — it flags
+// `org.gradle.toolchains.foojay-resolver` as a "usual suspect" and refuses to build, because a
+// build that fetches its own toolchain is not reproducible.
+//
+// `jvmToolchain(17)` in app/build.gradle.kts still applies; Gradle resolves it from a locally
+// installed JDK 17 and fails with a clear message if none is present. That requirement is
+// already documented in CLAUDE.md, and it was never really optional: the plugin could not
+// rescue the Java 25 problem either, because the JVM running the Gradle daemon is the one that
+// has to be old enough.
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
