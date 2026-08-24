@@ -63,7 +63,8 @@ Deliberately small and boring, so it stays approachable:
 - [tesseract4android](https://github.com/adaptech-cz/Tesseract4Android) (Apache-2.0) —
   OCR engine, fetched from JitPack
 - [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) `eng` model
-  (Apache-2.0) — bundled in assets
+  (Apache-2.0) — bundled in assets; 4113088 bytes, sha256
+  `7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2`
 - [Reorderable](https://github.com/Calvin-LL/Reorderable) (Apache-2.0) — drag-to-reorder
 - AndroidX / Jetpack Compose (Apache-2.0)
 

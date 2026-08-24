@@ -30,6 +30,15 @@ val releaseStoreFile: File? = signingValue("storeFile", "KEYSTORE_FILE")
 val baseVersionCode = 1
 
 /**
+ * Whether to emit one APK per architecture. Pass `-PabiSplits=false` for a single artifact.
+ *
+ * F-Droid's recipe wants exactly one APK per build entry, and so does anyone producing a build to
+ * hand round. Disabling splits yields one APK carrying all four ABIs at [baseVersionCode], which
+ * is simpler to submit than four entries with distinct codes.
+ */
+val abiSplitsEnabled = (findProperty("abiSplits") as String?)?.toBooleanStrictOrNull() ?: true
+
+/**
  * Ordered worst-to-best, and the order is what matters: a device offered several APKs installs
  * the highest `versionCode` it can run, so `arm64-v8a` has to outrank `armeabi-v7a` or a modern
  * phone would take the 32-bit build. Identical codes are worse still — the store, F-Droid and
@@ -79,7 +88,7 @@ android {
     // environment where CI cannot help. See #30.
     splits {
         abi {
-            isEnable = true
+            isEnable = abiSplitsEnabled
             reset()
             include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
             // Kept so there is still one APK that installs anywhere, for the release page and

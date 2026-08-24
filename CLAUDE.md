@@ -162,10 +162,20 @@ These are decisions, not oversights. Check the plan before "fixing" them.
   pins both measurements, and `docs/VERIFICATION.md` section J.
 - **The 4 MB `tessdata_fast` model is deliberate and sufficient.** The 15 MB `tessdata_best` was
   measured against it on the failing image and was **byte-identical** until the thresholding was
-  fixed, after which it corrected exactly one digit. Not worth 11 MB. Note the dependency comes
-  from **JitPack** (content-filtered to that one group in `settings.gradle.kts`) because the
-  library publishes nowhere else; F-Droid disallows JitPack, so the eventual fdroiddata recipe must
-  build the library from source (`publishToMavenLocal`, same coordinates).
+  fixed, after which it corrected exactly one digit. Not worth 11 MB.
+
+  The model is `eng.traineddata` from
+  [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast), Apache-2.0, committed at
+  `app/src/withOcr/assets/tessdata/` — 4113088 bytes, sha256
+  `7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2`. It is the only binary blob
+  in the tree that is not build tooling, so keep that checksum current if it is ever replaced:
+  it is what lets anyone verify the file against upstream rather than trusting it.
+
+  The dependency comes from **JitPack** (content-filtered to that one group in
+  `settings.gradle.kts`) because the library publishes nowhere else. **This is fine for F-Droid.**
+  Its inclusion policy lists JitPack.io among the trusted Maven repositories, alongside Maven
+  Central, Google Maven, OSS Sonatype, OSS JFrog and Clojars, so no source build of
+  Tesseract4Android is required. An earlier note here claimed the opposite and was wrong.
 - **OCR is a build flavour, and a runtime download is not an option** (#31). `withOcr` is the app
   as it has been; `noOcr` drops Tesseract, Leptonica and the model. Measured on release builds:
   **31.0 MB against 1.4 MB**, because the app's own code is all that is left once ~27 MB of native
