@@ -46,9 +46,10 @@ command-line flag or a line in `gradle.properties` works — the recipe uses the
 fdroidserver has no field for extra Gradle arguments:
 
 ```yaml
-prebuild:
-  - echo "abiSplits=false" >> ../gradle.properties
+prebuild: echo "abiSplits=false" >> ../gradle.properties
 ```
+
+(`fdroid rewritemeta` normalises a single command to that scalar form.)
 
 Per-ABI APKs are a later refinement: the `versionCode` offsets already exist for it (arm64-v8a
 4001, x86_64 3001, x86 2001, armeabi-v7a 1001), so it becomes four `Builds` entries when it is
@@ -66,7 +67,7 @@ License: GPL-3.0-or-later
 AuthorName: James Sesler
 SourceCode: https://github.com/TheAmericanMaker/Tickbox
 IssueTracker: https://github.com/TheAmericanMaker/Tickbox/issues
-Changelog: https://github.com/TheAmericanMaker/Tickbox/blob/main/CHANGELOG.md
+Changelog: https://github.com/TheAmericanMaker/Tickbox/blob/HEAD/CHANGELOG.md
 
 RepoType: git
 Repo: https://github.com/TheAmericanMaker/Tickbox.git
@@ -78,8 +79,7 @@ Builds:
     subdir: app
     gradle:
       - withOcr
-    prebuild:
-      - echo "abiSplits=false" >> ../gradle.properties
+    prebuild: echo "abiSplits=false" >> ../gradle.properties
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
@@ -92,23 +92,71 @@ flavour split and would no longer resolve. `noOcr` is deliberately not submitted
 enough for a first review, and the small build is easy to add later as a second package if it ever
 earns its own listing.
 
-Everything above `Builds` is checked against the policy and this repo. **Treat `Builds` itself as
-a draft until `fdroid build` passes** — the flavour selector and the prebuild line are the parts
-that only a real buildserver run can confirm.
+**This recipe has been built locally and it works.** `fdroid build` succeeded with scanning
+enabled, from commit `2651bb2`, producing one unsigned APK at `versionCode 1` / `versionName
+1.0.0` carrying all four ABIs. The `Builds` block is no longer a guess.
 
-## Test locally before submitting
+Submit with `commit: v1.0.0` once that tag exists. The local runs used a branch SHA because there
+is no tag yet, which validates everything except the tag resolving.
 
-There is a Docker image, `registry.gitlab.com/fdroid/fdroidserver:buildserver`. In it:
+## Testing it locally
+
+Two corrections to the obvious route, both of which cost time.
+
+**The buildserver container does not contain `fdroid`.**
+`registry.gitlab.com/fdroid/fdroidserver:buildserver` exists, but it holds the Android SDK, NDK,
+Gradle and a JDK under `/opt` plus provisioning scripts — it is the environment a build *runs in*,
+not the tool that drives one. `which fdroid` returns nothing. An earlier version of this document
+said to run `fdroid lint` and `fdroid build` inside it, which cannot work.
+
+**`fdroidserver` from pip is missing a helper.** Install it in a virtualenv, then fetch
+`gradlew-fdroid` by hand — the package expects it in `site-packages` but does not ship it, and in
+its own repository that filename is a *symlink*, so fetching the raw path gives you ten bytes of
+the string `gradlew.py`:
 
 ```bash
-fdroid readmeta
-fdroid rewritemeta com.theamericanmaker.tickbox
-fdroid checkupdates --allow-dirty com.theamericanmaker.tickbox
-fdroid lint com.theamericanmaker.tickbox
-fdroid build com.theamericanmaker.tickbox
+python3 -m venv fdroid-venv
+./fdroid-venv/bin/pip install fdroidserver
+SP=$(echo ./fdroid-venv/lib/python3*/site-packages)
+curl -fsSL -o "$SP/gradlew-fdroid" https://gitlab.com/fdroid/gradlew-fdroid/-/raw/main/gradlew.py
+chmod +x "$SP/gradlew-fdroid"
 ```
 
-Then:
+Then from a clone of fdroiddata with the metadata file in place:
+
+```bash
+export ANDROID_HOME=$HOME/Android/Sdk JAVA_HOME=$HOME/.jdks/jdk-17.0.20+8
+FD=../fdroid-venv/bin/fdroid
+$FD lint com.theamericanmaker.tickbox
+$FD rewritemeta com.theamericanmaker.tickbox
+$FD build com.theamericanmaker.tickbox -v --no-tarball
+```
+
+`fdroid build` skips a version it has already built, so delete
+`unsigned/com.theamericanmaker.tickbox_1.apk` between attempts. Do **not** reach for `--force` to
+get past that — it also carries on regardless of scan problems, which is the one thing you want the
+run to tell you about.
+
+`readmeta` over the whole repository currently fails on an unrelated app's Bitcoin address. That is
+upstream's data, not a signal about this recipe; `lint` on a single app is the useful check.
+
+### What the local runs found
+
+- **`lint`**: `Changelog` pointed at `/blob/main/`; it wants `/blob/HEAD/`. Fixed above.
+- **`rewritemeta`**: normalises a single `prebuild` command from a list to a scalar. Commit what it
+  produces rather than fighting the formatter.
+- **The scanner rejected the build outright** over `org.gradle.toolchains.foojay-resolver` in
+  `settings.gradle.kts` — a "usual suspect", because it downloads a JDK during configuration and a
+  build that fetches its own toolchain is not reproducible. The plugin is now removed and
+  `jvmToolchain(17)` resolves from a locally installed JDK 17 instead. **Do not add a toolchain
+  resolver back.**
+- Benign: fdroid strips the committed `gradle-wrapper.jar` and supplies its own Gradle, picking
+  8.13 from the wrapper's `distributionUrl` — so keep `gradle-wrapper.properties` accurate. It also
+  warns that it cannot strip the Tesseract and Leptonica `.so` files, which is a warning only.
+- Confirms the no-keystore claim at the top of this file: the log says
+  `Cleaned build.gradle.kts of keysigning configs`.
+
+## Submitting
 
 ```bash
 git add metadata/com.theamericanmaker.tickbox.yml
